@@ -2,21 +2,20 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Product } from '@app/contracts';
 import { CreateProductDto } from './dtos/create-product.dto.js';
 import { UpdateProductDto } from './dtos/update-product.dto.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 
 @Injectable()
 export class ProductsService {
-  private readonly products: Product[] = [
-    { id: 1, name: 'Sample Product', price: 9.99 },
-    { id: 2, name: 'Keyboard', price: 49.99 },
-    { id: 3, name: 'Mouse', price: 19.99 },
-  ];
+  constructor(private readonly prisma: PrismaService) { }
 
-  findAll(): Product[] {
-    return this.products;
+  async findAll() {
+    return this.prisma.product.findMany();
   }
 
-  findOne(id: number): Product {
-    const product = this.products.find((product) => product.id === id);
+  async findOne(id: number) {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+    });
 
     if (!product) {
       throw new NotFoundException(`Product with ID ${id} not found.`);
@@ -25,29 +24,27 @@ export class ProductsService {
     return product;
   }
 
-  create(createProductDto: CreateProductDto): Product {
-    const product: Product = {
-      id: this.products.length + 1,
-      ...createProductDto,
-    };
-
-    this.products.push(product);
-
-    return product;
+  async create(createProductDto: CreateProductDto) {
+    return this.prisma.product.create({
+      data: createProductDto,
+    });
   }
 
-  update(id: number, updateProductDto: UpdateProductDto): Product {
-    const product = this.findOne(id);
+  async update(id: number, updateProductDto: UpdateProductDto) {
+    await this.findOne(id); // a nonexistent product produces a NestJS 404 Not Found instead of Prisma's default record-not-found error.
 
-    Object.assign(product, updateProductDto);
-
-    return product;
+    return this.prisma.product.update({
+      where: { id },
+      data: updateProductDto,
+    });
   }
 
-  remove(id: number): void {
-    const product = this.findOne(id);
+  async remove(id: number) {
+    await this.findOne(id); // a nonexistent product produces a NestJS 404 Not Found instead of Prisma's default record-not-found error.
 
-    this.products.splice(this.products.indexOf(product), 1);
+    this.prisma.product.delete({
+      where: { id },
+    });
   }
 
 }
