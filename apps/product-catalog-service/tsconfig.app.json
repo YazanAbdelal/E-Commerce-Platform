@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "rootDir": "../..",
+    "outDir": "../../dist/apps/product-catalog-service"
+  },
+  "include": ["src/**/*", "../../libs/contracts/src/interfaces"],
+  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
+}

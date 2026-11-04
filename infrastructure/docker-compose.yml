@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-gateway
+    networks:
+      - ecommerce
+
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: apps/api-gateway/Dockerfile
+    expose:
+      - "3000"
+    environment:
+      - PRODUCT_SERVICE_URL=http://product-catalog-service:3001
+    depends_on:
+      - product-catalog-service
+    networks:
+      - ecommerce
+
+  product-catalog-service:
+    build:
+      context: ..
+      dockerfile: apps/product-catalog-service/Dockerfile
+    expose:
+      - "3001"
+    networks:
+      - ecommerce
+
+networks:
+  ecommerce:
+    driver: bridge
