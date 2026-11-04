@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ProductCatalogClient } from '../clients/product-catalog.client.js';
-import type { CreateProductRequest } from '@app/contracts';
+import type { CreateProductRequest, UpdateProductRequest } from '@app/contracts';
 
 @Controller('products')
 export class ProductsController {
@@ -19,5 +19,15 @@ export class ProductsController {
   @Post()
   create(@Body() data: CreateProductRequest) {
     return this.productCatalogClient.create(data);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() data: UpdateProductRequest) {
+    return this.productCatalogClient.update(id, data);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.productCatalogClient.remove(id);
   }
 }

@@ -1,5 +1,5 @@
 import { BadGatewayException, HttpException, Injectable, NotFoundException, Param } from '@nestjs/common';
-import type { CreateProductRequest, Product } from '@app/contracts';
+import type { CreateProductRequest, Product, UpdateProductRequest } from '@app/contracts';
 
 @Injectable()
 export class ProductCatalogClient {
@@ -16,7 +16,7 @@ export class ProductCatalogClient {
     }
 
     async create(data: CreateProductRequest): Promise<Product> {
-        const response = await fetch(`${this.baseUrl}/products`, {
+        const response = await this.sendRequest(`/products`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -27,11 +27,31 @@ export class ProductCatalogClient {
         return response.json();
     }
 
-    private async sendRequest(path: string): Promise<Response> {
+    async update(id: string, data: UpdateProductRequest): Promise<Product> {
+        const response = await this.sendRequest(`/products/${id}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+        });
+
+        return response.json();
+    }
+
+    async remove(id: string): Promise<{ message: string }> {
+        const response = await this.sendRequest(`/products/${id}`, {
+            method: 'DELETE',
+        });
+
+        return response.json();
+    }
+
+    private async sendRequest(path: string, options: RequestInit = {}): Promise<Response> {
         let response: Response;
 
         try {
-            response = await fetch(`${this.baseUrl}${path}`);
+            response = await fetch(`${this.baseUrl}${path}`, options);
         } catch {
             throw new BadGatewayException('Product Catalog Service is unavailable');
         }

@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   nginx:
     image: nginx:alpine
@@ -33,6 +31,24 @@ services:
       - "3001"
     networks:
       - ecommerce
+
+  postgres:
+    image: postgres:17
+    container_name: e-commerce-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=ecommerce
+      - POSTGRES_PASSWORD=ecommerce_dev
+      - POSTGRES_DB= product_catalog
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ecommerce
+
+volumes:
+  postgres_data:
 
 networks:
   ecommerce:
