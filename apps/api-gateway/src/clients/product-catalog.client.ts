@@ -1,5 +1,5 @@
-import { BadGatewayException, Injectable, NotFoundException, Param } from '@nestjs/common';
-import type { Product } from '@app/contracts';
+import { BadGatewayException, HttpException, Injectable, NotFoundException, Param } from '@nestjs/common';
+import type { CreateProductRequest, Product } from '@app/contracts';
 
 @Injectable()
 export class ProductCatalogClient {
@@ -15,6 +15,18 @@ export class ProductCatalogClient {
         return response.json();
     }
 
+    async create(data: CreateProductRequest): Promise<Product> {
+        const response = await fetch(`${this.baseUrl}/products`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+        });
+
+        return response.json();
+    }
+
     private async sendRequest(path: string): Promise<Response> {
         let response: Response;
 
@@ -24,12 +36,20 @@ export class ProductCatalogClient {
             throw new BadGatewayException('Product Catalog Service is unavailable');
         }
 
-        if (response.status === 404) {
-            throw new NotFoundException('Product not found.');
+        // Preserve client errors (400–499) from the Product Catalog Service.
+        if (response.status >= 400 && response.status < 500) {
+            const errorBody = await response
+                .json()
+                .catch(() => response.statusText || 'Downstream request failed');
+
+            throw new HttpException(errorBody, response.status);
         }
 
+        // Convert downstream server errors (500–599) into 502.
         if (!response.ok) {
-            throw new BadGatewayException('Product Catalog Service returned an error.');
+            throw new BadGatewayException(
+                'Product Catalog Service returned an error',
+            );
         }
 
         return response;
