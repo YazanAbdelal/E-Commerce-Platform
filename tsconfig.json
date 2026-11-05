@@ -40,9 +40,6 @@
       "path": "./apps/product-catalog-service/tsconfig.app.json"
     },
     {
-      "path": "./apps/e-commerce/tsconfig.app.json"
-    },
-    {
       "path": "./apps/user-service/tsconfig.app.json"
     }
   ]
