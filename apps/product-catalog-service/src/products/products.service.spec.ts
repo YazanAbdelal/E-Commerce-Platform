@@ -18,7 +18,7 @@ describe('ProductsService', () => {
   };
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
