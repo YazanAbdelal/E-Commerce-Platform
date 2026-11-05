@@ -19,6 +19,8 @@ describe('Products (E2E)', () => {
     let app: INestApplication;
     let prisma: PrismaService;
 
+    const createdProductIds: number[] = [];
+
     beforeAll(async () => {
         if (!process.env.TEST_DATABASE_URL) {
             throw new Error('TEST_DATABASE_URL is not defined');
@@ -48,8 +50,15 @@ describe('Products (E2E)', () => {
     });
 
     afterEach(async () => {
-        // The test database is dedicated to testing.
-        await prisma.product.deleteMany();
+        if (createdProductIds.length > 0) {
+            await prisma.product.deleteMany({
+                where: {
+                    id: { in: createdProductIds },
+                },
+            });
+
+            createdProductIds.length = 0;
+        }
     });
 
     afterAll(async () => {
@@ -57,12 +66,16 @@ describe('Products (E2E)', () => {
     });
 
     async function createTestProduct() {
-        return prisma.product.create({
+        const product = await prisma.product.create({
             data: {
                 name: 'E2E Test Product',
                 price: 19.99,
             },
         });
+
+        createdProductIds.push(product.id);
+
+        return product;
     }
 
     it('POST /products should create a product', async () => {
@@ -78,6 +91,8 @@ describe('Products (E2E)', () => {
             name: 'New Product',
             price: 49.99,
         });
+
+        createdProductIds.push(response.body.id);
 
         expect(response.body.id).toBeDefined();
     });
