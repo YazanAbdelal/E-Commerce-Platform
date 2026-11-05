@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
-import { UserServiceController } from './user-service.controller.js';
-import { UserServiceService } from './user-service.service.js';
+import { ConfigModule } from '@nestjs/config';
+import { PrismaModule } from './prisma/prisma.module.js';
+import { UsersModule } from './users/users.module.js';
 
 @Module({
-  imports: [],
-  controllers: [UserServiceController],
-  providers: [UserServiceService],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }), // for loading the .env file into process.env
+    PrismaModule,
+    UsersModule,
+  ],
 })
-export class UserServiceModule {}
+export class UserServiceModule { }
