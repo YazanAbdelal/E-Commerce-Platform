@@ -1,12 +1,23 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+
 import { ApiGatewayController } from './api-gateway.controller.js';
 import { ApiGatewayService } from './api-gateway.service.js';
-import { ProductsController } from './products/products.controller.js';
 import { ProductsModule } from './products/products.module.js';
+import { AuthModule } from './auth/auth.module.js';
+import { AuthController } from './auth/auth.controller.js';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
+import { RolesGuard } from './auth/guards/roles.guard.js';
 
 @Module({
-  imports: [ProductsModule],
-  controllers: [ApiGatewayController],
-  providers: [ApiGatewayService],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    AuthModule,
+    ProductsModule,
+  ],
+  controllers: [ApiGatewayController, AuthController],
+  providers: [ApiGatewayService, JwtAuthGuard, RolesGuard],
 })
 export class ApiGatewayModule { }

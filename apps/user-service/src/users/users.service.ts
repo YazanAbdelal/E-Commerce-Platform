@@ -33,6 +33,7 @@ export class UsersService {
                 select: {
                     id: true,
                     email: true,
+                    role: true,
                     createdAt: true,
                 },
             });
@@ -64,5 +65,17 @@ export class UsersService {
         }
 
         return user;
+    }
+
+    async findByEmail(email: string) {
+        return this.prisma.user.findUnique({
+            where: { email },
+            select: {
+                id: true,
+                email: true,
+                password: true,
+                role: true,
+            },
+        });
     }
 }
