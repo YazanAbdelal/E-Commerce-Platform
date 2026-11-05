@@ -34,9 +34,6 @@
   "files": [],
   "references": [
     {
-      "path": "./apps/e-commerce/tsconfig.app.json"
-    },
-    {
       "path": "./apps/api-gateway/tsconfig.app.json"
     },
     {
