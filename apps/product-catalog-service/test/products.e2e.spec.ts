@@ -104,7 +104,7 @@ describe('Products (E2E)', () => {
             .get('/products')
             .expect(200);
 
-        expect(response.body).toEqual(
+        expect(response.body.data).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
                     id: product.id,
@@ -113,6 +113,13 @@ describe('Products (E2E)', () => {
                 }),
             ]),
         );
+
+        expect(response.body.meta).toMatchObject({
+            page: 1,
+            limit: 10,
+            total: 1,
+            totalPages: 1,
+        });
     });
 
     it('GET /products/:id should return a product', async () => {

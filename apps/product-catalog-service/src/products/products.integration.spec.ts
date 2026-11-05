@@ -81,9 +81,14 @@ describe('ProductsService (integration)', () => {
     it('should return all products', async () => {
         const created = await createTestProduct();
 
-        const products = await service.findAll();
+        const products = await service.findAll({
+            page: 1,
+            limit: 10,
+            sortBy: 'name',
+            order: 'asc',
+        });
 
-        expect(products).toEqual(
+        expect(products.data).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
                     id: created.id,
