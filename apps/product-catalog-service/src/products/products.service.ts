@@ -42,7 +42,7 @@ export class ProductsService {
   async remove(id: number) {
     await this.findOne(id); // a nonexistent product produces a NestJS 404 Not Found instead of Prisma's default record-not-found error.
 
-    this.prisma.product.delete({
+    await this.prisma.product.delete({
       where: { id },
     });
   }
