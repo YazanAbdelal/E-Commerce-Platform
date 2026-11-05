@@ -4,6 +4,7 @@ import { CreateUserDto } from './dtos/create-user.dto.js';
 import * as bcrypt from 'bcrypt';
 
 import { Prisma } from '../generated/prisma/client.js';
+import { UpdateUserDto } from './dtos/update-user.dto.js';
 
 
 @Injectable()
@@ -77,5 +78,78 @@ export class UsersService {
                 role: true,
             },
         });
+    }
+
+    async update(id: number, dto: UpdateUserDto) {
+        const { email, currentPassword, newPassword } = dto;
+
+        // Require at least one actual update.
+        if (email === undefined && newPassword === undefined) {
+            throw new BadRequestException('No changes provided');
+        }
+
+        // Password changes require both passwords.
+        if (
+            (currentPassword === undefined) !==
+            (newPassword === undefined)
+        ) {
+            throw new BadRequestException(
+                'Both currentPassword and newPassword are required to change the password',
+            );
+        }
+
+        const user = await this.prisma.user.findUnique({
+            where: { id },
+            select: { password: true },
+        });
+
+        if (!user) {
+            throw new NotFoundException(`User with ID ${id} not found`);
+        }
+
+        const data: Prisma.UserUpdateInput = {};
+
+        if (email !== undefined) {
+            data.email = email;
+        }
+
+        if (newPassword !== undefined && currentPassword !== undefined) {
+            if (Buffer.byteLength(newPassword, 'utf8') > 72) {
+                throw new BadRequestException('Password cannot exceed 72 bytes');
+            }
+
+            const passwordMatches = await bcrypt.compare(
+                currentPassword,
+                user.password,
+            );
+
+            if (!passwordMatches) {
+                throw new BadRequestException('Current password is incorrect');
+            }
+
+            data.password = await bcrypt.hash(newPassword, 12);
+        }
+
+        try {
+            return await this.prisma.user.update({
+                where: { id },
+                data,
+                select: {
+                    id: true,
+                    email: true,
+                    createdAt: true,
+                    updatedAt: true,
+                },
+            });
+        } catch (error) {
+            if (
+                error instanceof Prisma.PrismaClientKnownRequestError &&
+                error.code === 'P2002'
+            ) {
+                throw new ConflictException('Email is already registered');
+            }
+
+            throw error;
+        }
     }
 }

@@ -9,6 +9,7 @@ import type {
     CreateUserResponse,
     LoginRequest,
     LoginResponse,
+    UpdateUserRequest,
     User,
 } from '@app/contracts';
 
@@ -43,6 +44,21 @@ export class UserClient {
 
     async findOne(id: number): Promise<User> {
         const response = await this.sendRequest(`/users/${id}`);
+        return response.json();
+    }
+
+    async updateOne(
+        id: number,
+        data: UpdateUserRequest,
+    ): Promise<User> {
+        const response = await this.sendRequest(`/users/${id}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+        });
+
         return response.json();
     }
 

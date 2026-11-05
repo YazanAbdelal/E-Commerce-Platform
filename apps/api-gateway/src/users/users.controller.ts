@@ -1,12 +1,12 @@
-import { Body, Controller, Get, Param, Post, UseGuards, Request, ForbiddenException } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards, Request, ForbiddenException, Patch } from '@nestjs/common';
 import {
-    User,
     UserRole,
     type CreateUserRequest,
     type CreateUserResponse,
 } from '@app/contracts';
 import { UserClient } from '../clients/user.client.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import type { UpdateUserRequest, User } from '@app/contracts';
 
 @Controller('users')
 export class UsersController {
@@ -36,5 +36,14 @@ export class UsersController {
         }
 
         return this.userClient.findOne(requestedUserId);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Patch('me')
+    updateMe(
+        @Body() data: UpdateUserRequest,
+        @Request() request: any,
+    ): Promise<User> {
+        return this.userClient.updateOne(request.user.sub, data);
     }
 }
