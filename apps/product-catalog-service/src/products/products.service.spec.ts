@@ -8,13 +8,15 @@ describe('ProductsService', () => {
   let service: ProductsService;
 
   const mockPrismaService = {
+    $transaction: vi.fn(),
     product: {
       findMany: vi.fn(),
+      count: vi.fn(),
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
-    }
+    },
   };
 
   beforeEach(async () => {
@@ -37,19 +39,50 @@ describe('ProductsService', () => {
     expect(service).toBeDefined();
   })
 
-  it('should return all products.', async () => {
+  it('should return paginated products.', async () => {
     const products = [
       { id: 1, name: 'Laptop', price: 1200 },
       { id: 2, name: 'Mouse', price: 30 },
     ];
 
-    // returns a promise that resolves in "products" when findMany is called.
+    const query = {
+      page: 1,
+      limit: 10,
+      sortBy: 'name' as const,
+      order: 'asc' as const,
+    };
+
     mockPrismaService.product.findMany.mockResolvedValue(products);
+    mockPrismaService.product.count.mockResolvedValue(2);
 
-    const result = await service.findAll();
+    mockPrismaService.$transaction.mockResolvedValue([products, 2]);
 
-    expect(result).toEqual(products);
-    expect(mockPrismaService.product.findMany).toHaveBeenCalledOnce();
+    const result = await service.findAll(query);
+
+    expect(result).toEqual({
+      data: products,
+      meta: {
+        total: 2,
+        page: 1,
+        limit: 10,
+        totalPages: 1,
+      },
+    });
+
+    expect(mockPrismaService.product.findMany).toHaveBeenCalledWith({
+      where: {},
+      skip: 0,
+      take: 10,
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    expect(mockPrismaService.product.count).toHaveBeenCalledWith({
+      where: {},
+    });
+
+    expect(mockPrismaService.$transaction).toHaveBeenCalledOnce();
   });
 
   it('should return a product by ID', async () => {
