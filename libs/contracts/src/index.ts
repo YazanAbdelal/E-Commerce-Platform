@@ -4,6 +4,7 @@ export * from './interfaces/product.interface.js';
 export * from './interfaces/user.interface.js';
 export * from './interfaces/create-user-response.interface.js';
 export * from './interfaces/login-response.interface.js';
+export * from './interfaces/paginated-response.interface.js';
 
 export * from './requests/update-product.request.js';
 export * from './requests/create-product.request.js';

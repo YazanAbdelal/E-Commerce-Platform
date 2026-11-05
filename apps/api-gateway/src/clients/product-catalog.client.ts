@@ -1,12 +1,24 @@
 import { BadGatewayException, HttpException, Injectable, NotFoundException, Param } from '@nestjs/common';
-import type { CreateProductRequest, Product, UpdateProductRequest } from '@app/contracts';
+import type { CreateProductRequest, PaginatedResponse, Product, UpdateProductRequest } from '@app/contracts';
 
 @Injectable()
 export class ProductCatalogClient {
     private readonly baseUrl = process.env.PRODUCT_CATALOG_URL ?? 'http://localhost:3001';
 
-    async findAll(): Promise<Product[]> {
-        const response = await this.sendRequest('/products');
+    async findAll(
+        query: Record<string, string | undefined>,
+    ): Promise<PaginatedResponse<Product>> {
+        const queryString = new URLSearchParams(
+            Object.entries(query).filter(
+                (entry): entry is [string, string] => entry[1] !== undefined,
+            ),
+        ).toString();
+
+        const path = queryString
+            ? `/products?${queryString}`
+            : '/products';
+
+        const response = await this.sendRequest(path);
         return response.json();
     }
 

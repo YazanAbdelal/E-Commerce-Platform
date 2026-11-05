@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ProductCatalogClient } from '../clients/product-catalog.client.js';
 import { UserRole, type CreateProductRequest, type UpdateProductRequest } from '@app/contracts';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
@@ -10,8 +10,8 @@ export class ProductsController {
   constructor(private readonly productCatalogClient: ProductCatalogClient) { }
 
   @Get()
-  findAll() {
-    return this.productCatalogClient.findAll();
+  findAll(@Query() query: Record<string, string | undefined>) {
+    return this.productCatalogClient.findAll(query);
   }
 
   @Get(':id')

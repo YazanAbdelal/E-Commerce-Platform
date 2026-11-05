@@ -1,15 +1,77 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Product } from '@app/contracts';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PaginatedResponse, Product } from '@app/contracts';
 import { CreateProductDto } from './dtos/create-product.dto.js';
 import { UpdateProductDto } from './dtos/update-product.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { FindProductsQueryDto } from './dtos/find-products-query.dto.js';
 
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) { }
 
-  async findAll() {
-    return this.prisma.product.findMany();
+  async findAll(query: FindProductsQueryDto): Promise<PaginatedResponse<Product>> {
+    const {
+      page,
+      limit,
+      minPrice,
+      maxPrice,
+      search,
+      sortBy,
+      order,
+    } = query;
+
+    if (
+      minPrice !== undefined &&
+      maxPrice !== undefined &&
+      minPrice > maxPrice
+    ) {
+      throw new BadRequestException(
+        'minPrice cannot be greater than maxPrice',
+      );
+    }
+
+    const where = {
+      ...(search
+        ? {
+          name: {
+            contains: search,
+            mode: 'insensitive' as const,
+          },
+        }
+        : {}),
+      ...(minPrice !== undefined || maxPrice !== undefined
+        ? {
+          price: {
+            ...(minPrice !== undefined ? { gte: minPrice } : {}),
+            ...(maxPrice !== undefined ? { lte: maxPrice } : {}),
+          },
+        }
+        : {}),
+    };
+
+    const skip = (page - 1) * limit;
+
+    const [products, total] = await this.prisma.$transaction([
+      this.prisma.product.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: {
+          [sortBy]: order,
+        },
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    return {
+      data: products,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async findOne(id: number) {
