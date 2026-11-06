@@ -8,6 +8,7 @@ export default defineConfig({
     include: ['**/*.spec.ts'],
     exclude: [
       '**/*.e2e.spec.ts',
+      '**/*.integration.spec.ts',
     ],
   },
 });
