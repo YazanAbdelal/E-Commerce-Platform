@@ -37,4 +37,36 @@ describe('AuthController', () => {
   it('should be defined', () => {
     expect(controller).toBeDefined();
   });
+
+  it('should log in a user', async () => {
+    const loginDto = {
+      email: 'user@example.com',
+      password: 'Password123',
+    };
+
+    const expectedResult = {
+      access_token: 'mock-jwt-token',
+    };
+
+    mockAuthService.login.mockResolvedValue(expectedResult);
+
+    const result = await controller.login(loginDto);
+
+    expect(mockAuthService.login).toHaveBeenCalledWith(loginDto);
+    expect(result).toEqual(expectedResult);
+  });
+
+  it('should return the authenticated user profile', () => {
+    const request = {
+      user: {
+        sub: 1,
+        email: 'user@example.com',
+        role: 'CUSTOMER',
+      },
+    };
+
+    const result = controller.getProfile(request);
+
+    expect(result).toEqual(request.user);
+  });
 });

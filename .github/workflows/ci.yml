@@ -1,69 +1,81 @@
 name: CI
 
 on:
-    push:
-    pull_request:
+  push:
+  pull_request:
 
 jobs:
-    build-and-test:
-        runs-on: ubuntu-latest
+  build-and-test:
+    runs-on: ubuntu-latest
 
-        services:
-            postgres:
-                image: postgres:17
-                env:
-                    POSTGRES_USER: ecommerce
-                    POSTGRES_PASSWORD: ecommerce_dev
-                    POSTGRES_DB: product_catalog_test
-                ports:
-                    - 5432:5432
-                options: >-
-                    --health-cmd "pg_isready -U ecommerce -d product_catalog_test"
-                    --health-interval 10s
-                    --health-timeout 5s
-                    --health-retries 5
-
+    services:
+      postgres:
+        image: postgres:17
         env:
-            TEST_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/product_catalog_test
+          POSTGRES_USER: ecommerce
+          POSTGRES_PASSWORD: ecommerce_dev
+          POSTGRES_DB: product_catalog_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ecommerce -d product_catalog_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
+    env:
+      TEST_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/product_catalog_test
+      USER_TEST_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/user_service_test
 
-            - name: Set up Node.js
-              uses: actions/setup-node@v4
-              with:
-                  node-version: 24
-                  cache: npm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-            - name: Install dependencies
-              run: npm ci
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
 
-            - name: Generate Product Catalog Prisma Client
-              run: npx prisma generate --config apps/product-catalog-service/prisma.config.ts
+      - name: Install dependencies
+        run: npm ci
 
-            - name: Apply Product Catalog migrations
-              run: npx prisma migrate deploy --config apps/product-catalog-service/prisma.config.ts
+      - name: Generate Product Catalog Prisma Client
+        run: npx prisma generate --config apps/product-catalog-service/prisma.config.ts
 
-            - name: Generate User Service Prisma Client
-              run: npx prisma generate --config apps/user-service/prisma.config.ts
-              env:
-                  USER_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/user_service
+      - name: Apply Product Catalog migrations
+        run: npx prisma migrate deploy --config apps/product-catalog-service/prisma.config.ts
 
-            - name: Build API Gateway
-              run: npx nest build api-gateway
+      - name: Create User Service test database
+        run: |
+          PGPASSWORD=ecommerce_dev psql \
+            -h localhost \
+            -U ecommerce \
+            -d postgres \
+            -c "CREATE DATABASE user_service_test;"
 
-            - name: Build Product Catalog Service
-              run: npx nest build product-catalog-service
+      - name: Generate User Service Prisma Client
+        run: npx prisma generate --config apps/user-service/prisma.config.ts
+        env:
+          USER_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/user_service_test
 
-            - name: Build User Service
-              run: npx nest build user-service
+      - name: Apply User Service migrations
+        run: npx prisma migrate deploy --config apps/user-service/prisma.test.config.ts
 
-            - name: Run unit tests
-              run: npm test
+      - name: Build API Gateway
+        run: npx nest build api-gateway
 
-            - name: Run integration tests
-              run: npm run test:integration
+      - name: Build Product Catalog Service
+        run: npx nest build product-catalog-service
 
-            - name: Run E2E tests
-              run: npm run test:e2e
+      - name: Build User Service
+        run: npx nest build user-service
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Run integration tests
+        run: npm run test:integration
+
+      - name: Run E2E tests
+        run: npm run test:e2e
