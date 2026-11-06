@@ -1,22 +1,39 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { ApiGatewayController } from './api-gateway.controller.js';
 import { ApiGatewayService } from './api-gateway.service.js';
 
 describe('ApiGatewayController', () => {
-  let apiGatewayController: ApiGatewayController;
+  let controller: ApiGatewayController;
 
-  beforeEach(async () => {
-    const app: TestingModule = await Test.createTestingModule({
-      controllers: [ApiGatewayController],
-      providers: [ApiGatewayService],
-    }).compile();
+  const mockApiGatewayService = {
+    getHello: vi.fn(),
+  };
 
-    apiGatewayController = app.get<ApiGatewayController>(ApiGatewayController);
+  beforeEach(() => {
+    vi.resetAllMocks();
+
+    controller = new ApiGatewayController(
+      mockApiGatewayService as unknown as ApiGatewayService,
+    );
   });
 
-  describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(apiGatewayController.getHello()).toBe('Hello World!');
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+
+  it('should return the greeting from ApiGatewayService', () => {
+    mockApiGatewayService.getHello.mockReturnValue('Hello World!');
+
+    expect(controller.getHello()).toBe('Hello World!');
+    expect(mockApiGatewayService.getHello).toHaveBeenCalledOnce();
+  });
+
+  it('should propagate errors from ApiGatewayService', () => {
+    mockApiGatewayService.getHello.mockImplementation(() => {
+      throw new Error('Service error');
     });
+
+    expect(() => controller.getHello()).toThrow('Service error');
   });
 });

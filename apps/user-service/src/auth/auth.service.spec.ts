@@ -124,4 +124,15 @@ describe('AuthService', () => {
     expect(mockUsersService.findByEmail).not.toHaveBeenCalled();
     expect(mockJwtService.signAsync).not.toHaveBeenCalled();
   });
+
+  it('should reject passwords exceeding 72 bytes', async () => {
+    const password = 'a'.repeat(73);
+
+    await expect(
+      service.login({
+        email: 'test@example.com',
+        password,
+      }),
+    ).rejects.toThrow(UnauthorizedException);
+  });
 });

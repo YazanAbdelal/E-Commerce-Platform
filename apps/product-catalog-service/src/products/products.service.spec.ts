@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ProductsService } from './products.service.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 describe('ProductsService', () => {
   let service: ProductsService;
@@ -187,5 +187,124 @@ describe('ProductsService', () => {
     await expect(service.remove(999)).rejects.toThrow(NotFoundException);
 
     expect(mockPrismaService.product.delete).not.toHaveBeenCalled();
+  });
+
+  it('should throw BadRequestException when minPrice is greater than maxPrice', async () => {
+    const query = {
+      page: 1,
+      limit: 10,
+      minPrice: 100,
+      maxPrice: 50,
+      sortBy: 'name' as const,
+      order: 'asc' as const,
+    };
+
+    await expect(service.findAll(query))
+      .rejects.toThrow(BadRequestException);
+
+    expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should apply search and price filters with pagination and sorting', async () => {
+    const products = [
+      { id: 1, name: 'Gaming Laptop', price: 1200 },
+    ];
+
+    const query = {
+      page: 2,
+      limit: 5,
+      search: 'laptop',
+      minPrice: 500,
+      maxPrice: 1500,
+      sortBy: 'price' as const,
+      order: 'desc' as const,
+    };
+
+    mockPrismaService.product.findMany.mockResolvedValue(products);
+    mockPrismaService.product.count.mockResolvedValue(12);
+    mockPrismaService.$transaction.mockResolvedValue([products, 12]);
+
+    const result = await service.findAll(query);
+
+    const expectedWhere = {
+      name: {
+        contains: 'laptop',
+        mode: 'insensitive',
+      },
+      price: {
+        gte: 500,
+        lte: 1500,
+      },
+    };
+
+    expect(mockPrismaService.product.findMany).toHaveBeenCalledWith({
+      where: expectedWhere,
+      skip: 5,
+      take: 5,
+      orderBy: {
+        price: 'desc',
+      },
+    });
+
+    expect(mockPrismaService.product.count).toHaveBeenCalledWith({
+      where: expectedWhere,
+    });
+
+    expect(result.meta).toEqual({
+      total: 12,
+      page: 2,
+      limit: 5,
+      totalPages: 3,
+    });
+  });
+
+  it('should apply only the minimum price filter', async () => {
+    mockPrismaService.$transaction.mockResolvedValue([[], 0]);
+
+    await service.findAll({
+      page: 1,
+      limit: 10,
+      minPrice: 100,
+      sortBy: 'name',
+      order: 'asc',
+    });
+
+    expect(mockPrismaService.product.findMany).toHaveBeenCalledWith({
+      where: {
+        price: {
+          gte: 100,
+        },
+      },
+      skip: 0,
+      take: 10,
+      orderBy: {
+        name: 'asc',
+      },
+    });
+  });
+
+  it('should apply only the maximum price filter', async () => {
+    mockPrismaService.$transaction.mockResolvedValue([[], 0]);
+
+    await service.findAll({
+      page: 1,
+      limit: 10,
+      maxPrice: 500,
+      sortBy: 'name',
+      order: 'asc',
+    });
+
+    expect(mockPrismaService.product.findMany).toHaveBeenCalledWith({
+      where: {
+        price: {
+          lte: 500,
+        },
+      },
+      skip: 0,
+      take: 10,
+      orderBy: {
+        name: 'asc',
+      },
+    });
   });
 });

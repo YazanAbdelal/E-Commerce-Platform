@@ -329,4 +329,33 @@ describe('UsersService', () => {
       }),
     ).rejects.toThrow(ConflictException);
   });
+
+  it('should rethrow unexpected errors when creating a user', async () => {
+    const error = new Error('Database connection failed');
+
+    mockPrismaService.user.create.mockRejectedValue(error);
+
+    await expect(
+      service.create({
+        email: 'test@example.com',
+        password: 'SecurePassword123',
+      }),
+    ).rejects.toThrow(error);
+  });
+
+  it('should rethrow unexpected errors when updating a user', async () => {
+    const error = new Error('Database connection failed');
+
+    mockPrismaService.user.findUnique.mockResolvedValue({
+      password: 'existing-hash',
+    });
+
+    mockPrismaService.user.update.mockRejectedValue(error);
+
+    await expect(
+      service.update(1, {
+        email: 'new@example.com',
+      }),
+    ).rejects.toThrow(error);
+  });
 });
