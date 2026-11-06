@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
-import { PrismaModule } from './prisma/prisma.module.js';
+import { ConfigModule } from '@nestjs/config';
+import { CartModule } from './cart/cart.module.js';
 
 @Module({
-  imports: [PrismaModule],
-  controllers: [],
-  providers: [],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    CartModule,
+  ],
 })
 export class ShoppingCartServiceModule { }

@@ -43,9 +43,6 @@
       "path": "./apps/user-service/tsconfig.app.json"
     },
     {
-      "path": "./apps/e-commerce/tsconfig.app.json"
-    },
-    {
       "path": "./apps/shopping-cart-service/tsconfig.app.json"
     }
   ]

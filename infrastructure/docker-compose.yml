@@ -9,41 +9,107 @@ services:
       - api-gateway
     networks:
       - ecommerce
+    restart: unless-stopped
 
   api-gateway:
     build:
       context: ..
-      dockerfile: apps/api-gateway/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: api-gateway
     expose:
       - "3000"
     environment:
-      - PRODUCT_SERVICE_URL=http://product-catalog-service:3001
+      PORT: 3000
+      PRODUCT_CATALOG_URL: http://product-catalog-service:3001
+      USER_SERVICE_URL: http://user-service:3002
+      CART_SERVICE_URL: http://shopping-cart-service:3003
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     depends_on:
       - product-catalog-service
+      - user-service
+      - shopping-cart-service
     networks:
       - ecommerce
+    restart: unless-stopped
 
   product-catalog-service:
     build:
       context: ..
-      dockerfile: apps/product-catalog-service/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: product-catalog-service
     expose:
       - "3001"
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://ecommerce:ecommerce_dev@postgres:5432/product_catalog?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - ecommerce
+    restart: unless-stopped
+
+  user-service:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: user-service
+    expose:
+      - "3002"
+    environment:
+      PORT: 3002
+      USER_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@postgres:5432/user_service?schema=public
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ecommerce
+    restart: unless-stopped
+
+  shopping-cart-service:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: shopping-cart-service
+    expose:
+      - "3003"
+    environment:
+      PORT: 3003
+      CART_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@postgres:5432/shopping_cart?schema=public
+      PRODUCT_CATALOG_URL: http://product-catalog-service:3001
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      product-catalog-service:
+        condition: service_started
+    networks:
+      - ecommerce
+    restart: unless-stopped
 
   postgres:
     image: postgres:17
     container_name: e-commerce-postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=ecommerce
-      - POSTGRES_PASSWORD=ecommerce_dev
-      - POSTGRES_DB= product_catalog
+      POSTGRES_USER: ecommerce
+      POSTGRES_PASSWORD: ecommerce_dev
+      POSTGRES_DB: product_catalog
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecommerce -d product_catalog"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - ecommerce
 

@@ -7,7 +7,6 @@ export default defineConfig({
     root: './',
     include: ['**/*.spec.ts'],
     exclude: [
-      '**/*.integration.spec.ts',
       '**/*.e2e.spec.ts',
     ],
   },
