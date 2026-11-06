@@ -37,6 +37,15 @@
         "tsConfigPath": "apps/product-catalog-service/tsconfig.app.json"
       }
     },
+    "shopping-cart-service": {
+      "type": "application",
+      "root": "apps/shopping-cart-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/shopping-cart-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/shopping-cart-service/tsconfig.app.json"
+      }
+    },
     "user-service": {
       "type": "application",
       "root": "apps/user-service",
