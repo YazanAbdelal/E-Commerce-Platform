@@ -46,7 +46,9 @@ describe('User Service (e2e)', () => {
     });
 
     afterAll(async () => {
-        await app.close();
+        if (app) {
+            await app.close();
+        }
     });
 
     it('should register a user', async () => {
