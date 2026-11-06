@@ -24,6 +24,7 @@ jobs:
           --health-retries 5
 
     env:
+      DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/product_catalog_test
       TEST_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/product_catalog_test
       USER_TEST_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/user_service_test
       CART_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/shopping_cart_test
