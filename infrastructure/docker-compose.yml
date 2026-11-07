@@ -55,6 +55,18 @@ services:
       - ecommerce
     restart: unless-stopped
 
+  tempo:
+    image: grafana/tempo:latest
+    container_name: ecommerce-tempo
+    command:
+      - "-config.file=/etc/tempo.yaml"
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    networks:
+      - ecommerce
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:latest
     ports:
@@ -175,6 +187,7 @@ volumes:
   grafana_data:
   loki_data:
   alloy_data:
+  tempo_data:
 
 networks:
   ecommerce:
