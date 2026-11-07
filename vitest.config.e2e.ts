@@ -7,4 +7,10 @@ export default defineConfig({
     root: './',
     include: ['**/*.e2e.spec.ts'],
   },
+  oxc: {
+    decorator: {
+      legacy: true,
+      emitDecoratorMetadata: true,
+    },
+  },
 });
