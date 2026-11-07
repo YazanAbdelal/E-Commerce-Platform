@@ -26,6 +26,18 @@ services:
       - ecommerce
     restart: unless-stopped
 
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - ecommerce
+    restart: unless-stopped
+
   api-gateway:
     build:
       context: ..
@@ -131,6 +143,7 @@ services:
 volumes:
   postgres_data:
   prometheus_data:
+  grafana_data:
 
 networks:
   ecommerce:
