@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:3000']
+
+  - job_name: 'product-catalog-service'
+    static_configs:
+      - targets: ['product-catalog-service:3001']
+
+  - job_name: 'user-service'
+    static_configs:
+      - targets: ['user-service:3002']
+
+  - job_name: 'shopping-cart-service'
+    static_configs:
+      - targets: ['shopping-cart-service:3003']
