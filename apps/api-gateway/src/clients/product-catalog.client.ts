@@ -6,7 +6,7 @@ export class ProductCatalogClient {
     private readonly baseUrl = process.env.PRODUCT_CATALOG_URL ?? 'http://localhost:3001';
 
     async findAll(
-        query: Record<string, string | undefined>,
+        query: Record<string, string | undefined>, requestId: string,
     ): Promise<PaginatedResponse<Product>> {
         const queryString = new URLSearchParams(
             Object.entries(query).filter(
@@ -18,52 +18,80 @@ export class ProductCatalogClient {
             ? `/products?${queryString}`
             : '/products';
 
-        const response = await this.sendRequest(path);
+        const response = await this.sendRequest(path, requestId);
         return response.json();
     }
 
-    async findOne(id: number): Promise<Product> {
-        const response = await this.sendRequest(`/products/${id}`);
+    async findOne(id: number, requestId: string): Promise<Product> {
+        const response = await this.sendRequest(`/products/${id}`, requestId);
         return response.json();
     }
 
-    async create(data: CreateProductRequest): Promise<Product> {
-        const response = await this.sendRequest(`/products`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
+    async create(data: CreateProductRequest, requestId: string): Promise<Product> {
+        const response = await this.sendRequest(
+            '/products',
+            requestId,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
             },
-            body: JSON.stringify(data),
-        });
-
+        );
         return response.json();
     }
 
-    async update(id: string, data: UpdateProductRequest): Promise<Product> {
-        const response = await this.sendRequest(`/products/${id}`, {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
+    async update(
+        id: string,
+        data: UpdateProductRequest,
+        requestId: string,
+    ): Promise<Product> {
+        const response = await this.sendRequest(
+            `/products/${id}`,
+            requestId,
+            {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
             },
-            body: JSON.stringify(data),
-        });
+        );
 
         return response.json();
     }
 
-    async remove(id: string): Promise<{ message: string }> {
-        const response = await this.sendRequest(`/products/${id}`, {
-            method: 'DELETE',
-        });
+    async remove(
+        id: string,
+        requestId: string,
+    ): Promise<{ message: string }> {
+        const response = await this.sendRequest(
+            `/products/${id}`,
+            requestId,
+            {
+                method: 'DELETE',
+            },
+        );
 
         return response.json();
     }
 
-    private async sendRequest(path: string, options: RequestInit = {}): Promise<Response> {
+    private async sendRequest(
+        path: string,
+        requestId: string,
+        options: RequestInit = {},
+    ): Promise<Response> {
         let response: Response;
 
         try {
-            response = await fetch(`${this.baseUrl}${path}`, options);
+            const headers = new Headers(options.headers);
+            headers.set('x-request-id', requestId);
+
+            response = await fetch(`${this.baseUrl}${path}`, {
+                ...options,
+                headers,
+            });
         } catch {
             throw new BadGatewayException('Product Catalog Service is unavailable');
         }

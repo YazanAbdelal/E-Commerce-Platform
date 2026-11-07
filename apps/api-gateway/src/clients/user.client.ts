@@ -18,8 +18,11 @@ export class UserClient {
     private readonly baseUrl =
         process.env.USER_SERVICE_URL ?? 'http://localhost:3002';
 
-    async register(data: CreateUserRequest): Promise<CreateUserResponse> {
-        const response = await this.sendRequest('/users', {
+    async register(
+        data: CreateUserRequest,
+        requestId: string,
+    ): Promise<CreateUserResponse> {
+        const response = await this.sendRequest('/users', requestId, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -30,8 +33,11 @@ export class UserClient {
         return response.json();
     }
 
-    async login(data: LoginRequest): Promise<LoginResponse> {
-        const response = await this.sendRequest('/auth/login', {
+    async login(
+        data: LoginRequest,
+        requestId: string,
+    ): Promise<LoginResponse> {
+        const response = await this.sendRequest('/auth/login', requestId, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -42,16 +48,17 @@ export class UserClient {
         return response.json();
     }
 
-    async findOne(id: number): Promise<User> {
-        const response = await this.sendRequest(`/users/${id}`);
+    async findOne(id: number, requestId: string): Promise<User> {
+        const response = await this.sendRequest(`/users/${id}`, requestId);
         return response.json();
     }
 
     async updateOne(
         id: number,
         data: UpdateUserRequest,
+        requestId: string,
     ): Promise<User> {
-        const response = await this.sendRequest(`/users/${id}`, {
+        const response = await this.sendRequest(`/users/${id}`, requestId, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
@@ -64,15 +71,24 @@ export class UserClient {
 
     private async sendRequest(
         path: string,
+        requestId: string,
         options: RequestInit = {},
     ): Promise<Response> {
         let response: Response;
 
         try {
-            response = await fetch(`${this.baseUrl}${path}`, options);
+            const headers = new Headers(options.headers);
+            headers.set('x-request-id', requestId);
+
+            response = await fetch(`${this.baseUrl}${path}`, {
+                ...options,
+                headers,
+            });
         } catch {
             throw new BadGatewayException('User Service is unavailable');
         }
+
+        // Keep your existing error handling below this point.
 
         // Preserve client errors (400–499) from the User Service.
         if (response.status >= 400 && response.status < 500) {

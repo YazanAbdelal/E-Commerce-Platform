@@ -7,6 +7,12 @@ import {
 import { UserClient } from '../clients/user.client.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import type { UpdateUserRequest, User } from '@app/contracts';
+import type { Request as ExpressRequest } from 'express';
+
+type RequestWithId = ExpressRequest & {
+    id: string;
+    user: any;
+};
 
 @Controller('users')
 export class UsersController {
@@ -15,8 +21,9 @@ export class UsersController {
     @Post()
     register(
         @Body() data: CreateUserRequest,
+        @Request() request: RequestWithId,
     ): Promise<CreateUserResponse> {
-        return this.userClient.register(data);
+        return this.userClient.register(data, request.id);
     }
 
     @UseGuards(JwtAuthGuard)
@@ -35,7 +42,7 @@ export class UsersController {
             throw new ForbiddenException('You cannot access this user');
         }
 
-        return this.userClient.findOne(requestedUserId);
+        return this.userClient.findOne(requestedUserId, request.id);
     }
 
     @UseGuards(JwtAuthGuard)
@@ -44,6 +51,10 @@ export class UsersController {
         @Body() data: UpdateUserRequest,
         @Request() request: any,
     ): Promise<User> {
-        return this.userClient.updateOne(request.user.sub, data);
+        return this.userClient.updateOne(
+            request.user.sub,
+            data,
+            request.id,
+        );
     }
 }
