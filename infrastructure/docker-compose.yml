@@ -93,6 +93,17 @@ services:
       USER_SERVICE_URL: http://user-service:3002
       CART_SERVICE_URL: http://shopping-cart-service:3003
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+
+      OTEL_SERVICE_NAME: api-gateway
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
+      OTEL_PROPAGATORS: tracecontext,baggage
+      NODE_OPTIONS: >-
+        --experimental-loader=@opentelemetry/instrumentation/hook.mjs
+        --import=@opentelemetry/auto-instrumentations-node/register
     depends_on:
       - product-catalog-service
       - user-service
@@ -112,6 +123,17 @@ services:
     environment:
       PORT: 3001
       DATABASE_URL: postgresql://ecommerce:ecommerce_dev@postgres:5432/product_catalog?schema=public
+
+      OTEL_SERVICE_NAME: product-catalog-service
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
+      OTEL_PROPAGATORS: tracecontext,baggage
+      NODE_OPTIONS: >-
+        --experimental-loader=@opentelemetry/instrumentation/hook.mjs
+        --import=@opentelemetry/auto-instrumentations-node/register
     depends_on:
       postgres:
         condition: service_healthy
@@ -151,6 +173,17 @@ services:
       CART_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@postgres:5432/shopping_cart?schema=public
       PRODUCT_CATALOG_URL: http://product-catalog-service:3001
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+
+      OTEL_SERVICE_NAME: shopping-cart-service
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
+      OTEL_PROPAGATORS: tracecontext,baggage
+      NODE_OPTIONS: >-
+        --experimental-loader=@opentelemetry/instrumentation/hook.mjs
+        --import=@opentelemetry/auto-instrumentations-node/register
     depends_on:
       postgres:
         condition: service_healthy

@@ -30,6 +30,8 @@
     "@nestjs/jwt": "^12.0.3",
     "@nestjs/mapped-types": "^12.0.1",
     "@nestjs/platform-express": "^12.0.1",
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.83.0",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "@prometheus-io/client": "^0.16.1",
@@ -69,5 +71,11 @@
     "vite": "^8.0.0",
     "vitest": "^4.1.2",
     "webpack-node-externals": "^3.0.0"
+  },
+  "allowScripts": {
+    "@prisma/engines@7.10.1": true,
+    "bcrypt@6.0.0": true,
+    "prisma@7.10.1": true,
+    "protobufjs@7.6.6": true
   }
 }
