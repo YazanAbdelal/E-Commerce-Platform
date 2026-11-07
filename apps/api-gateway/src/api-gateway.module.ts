@@ -11,9 +11,13 @@ import { RolesGuard } from './auth/guards/roles.guard.js';
 import { UsersModule } from './users/users.module.js';
 import { UserClientModule } from './clients/user-client.module.js';
 import { CartModule } from './cart/cart.module.js';
+import { LoggerModule } from 'nestjs-pino';
+import { createLoggerConfig } from '@app/observability';
 
 @Module({
   imports: [
+    LoggerModule.forRoot(createLoggerConfig('api-gateway')),
+
     ConfigModule.forRoot({
       isGlobal: true,
     }),
