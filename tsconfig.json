@@ -28,8 +28,15 @@
       ],
       "@app/contracts/*": [
         "./libs/contracts/src/*"
+      ],
+      "@app/observability": [
+        "./libs/observability/src/index.ts"
+      ],
+      "@app/observability/*": [
+        "./libs/observability/src/*"
       ]
-    }
+    },
+    
   },
   "files": [],
   "references": [
