@@ -46,6 +46,15 @@
         "tsConfigPath": "apps/order-service/tsconfig.app.json"
       }
     },
+    "payment-service": {
+      "type": "application",
+      "root": "apps/payment-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/payment-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/payment-service/tsconfig.app.json"
+      }
+    },
     "product-catalog-service": {
       "type": "application",
       "root": "apps/product-catalog-service",

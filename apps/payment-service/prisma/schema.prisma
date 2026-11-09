@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id          Int          @id @default(autoincrement())
+  userId      Int
+  orderId     Int          @unique
+  amount      Decimal      @db.Decimal(10, 2)
+  currency    String       @default("usd")
+  status      PaymentStatus @default(PENDING)
+  provider    String       @default("stripe")
+  providerPaymentId String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}

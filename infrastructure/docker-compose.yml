@@ -93,6 +93,7 @@ services:
       USER_SERVICE_URL: http://user-service:3002
       CART_SERVICE_URL: http://shopping-cart-service:3003
       ORDER_SERVICE_URL: http://order-service:3004
+      PAYMENT_SERVICE_URL: http://payment-service:3005
 
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
 
@@ -111,6 +112,7 @@ services:
       - user-service
       - shopping-cart-service
       - order-service
+      - payment-service
     networks:
       - ecommerce
     restart: unless-stopped
@@ -225,6 +227,40 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - ecommerce
+    restart: unless-stopped
+
+  payment-service:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: payment-service
+    expose:
+      - "3005"
+    environment:
+      PORT: 3005
+      PAYMENT_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@postgres:5432/payment_service?schema=public
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+
+      ORDER_SERVICE_URL: http://order-service:3004
+
+      OTEL_SERVICE_NAME: payment-service
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
+      OTEL_PROPAGATORS: tracecontext,baggage
+      NODE_OPTIONS: >-
+        --experimental-loader=@opentelemetry/instrumentation/hook.mjs
+        --import=@opentelemetry/auto-instrumentations-node/register
+    depends_on:
+      postgres:
+        condition: service_healthy
+      order-service:
+        condition: service_started
     networks:
       - ecommerce
     restart: unless-stopped

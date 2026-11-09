@@ -20,6 +20,7 @@ import {
 } from '@app/observability';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { OrdersModule } from './orders/orders.module.js';
+import { PaymentsModule } from './payments/payments.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { OrdersModule } from './orders/orders.module.js';
     ProductsModule,
     CartModule,
     OrdersModule,
+    PaymentsModule,
     UsersModule,
     UserClientModule,
   ],

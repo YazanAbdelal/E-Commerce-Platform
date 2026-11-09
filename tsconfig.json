@@ -43,6 +43,9 @@
 
     {
       "path": "./apps/order-service/tsconfig.app.json"
+    },
+    {
+      "path": "./apps/payment-service/tsconfig.app.json"
     }
   ]
 }

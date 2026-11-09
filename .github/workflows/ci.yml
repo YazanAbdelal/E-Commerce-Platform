@@ -31,6 +31,8 @@ jobs:
       CART_TEST_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/shopping_cart_test
       ORDER_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/order_service_test
       ORDER_TEST_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/order_service_test
+      PAYMENT_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/payment_service_test
+      PAYMENT_TEST_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/payment_service_test
       JWT_SECRET: test-only-jwt-secret-for-ci-at-least-32-characters
 
     steps:
@@ -96,6 +98,20 @@ jobs:
       - name: Apply Order Service migrations
         run: npx prisma migrate deploy --config apps/order-service/prisma.config.ts
 
+      - name: Create Payment Service test database
+        run: |
+          PGPASSWORD=ecommerce_dev psql \
+            -h localhost \
+            -U ecommerce \
+            -d postgres \
+            -c "CREATE DATABASE payment_service_test;"
+
+      - name: Generate Payment Service Prisma Client
+        run: npx prisma generate --config apps/payment-service/prisma.config.ts
+
+      - name: Apply Payment Service migrations
+        run: npx prisma migrate deploy --config apps/payment-service/prisma.config.ts
+
       - name: Build API Gateway
         run: npx nest build api-gateway
 
@@ -110,6 +126,9 @@ jobs:
 
       - name: Build Order Service
         run: npx nest build order-service
+
+      - name: Build Payment Service
+        run: npx nest build payment-service
 
       - name: Run unit tests
         run: npm test
