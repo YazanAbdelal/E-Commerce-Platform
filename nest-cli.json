@@ -37,6 +37,15 @@
         "tsConfigPath": "libs/observability/tsconfig.lib.json"
       }
     },
+    "order-service": {
+      "type": "application",
+      "root": "apps/order-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/order-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/order-service/tsconfig.app.json"
+      }
+    },
     "product-catalog-service": {
       "type": "application",
       "root": "apps/product-catalog-service",

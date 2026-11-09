@@ -19,6 +19,7 @@ import {
   HttpMetricsInterceptor,
 } from '@app/observability';
 import { APP_INTERCEPTOR } from '@nestjs/core';
+import { OrdersModule } from './orders/orders.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
     AuthModule,
     ProductsModule,
     CartModule,
+    OrdersModule,
     UsersModule,
     UserClientModule,
   ],

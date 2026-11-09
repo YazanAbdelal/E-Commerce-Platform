@@ -18,25 +18,13 @@
     "skipLibCheck": true,
     "strict": true,
     "strictPropertyInitialization": false,
-    "types": [
-      "vitest/globals",
-      "node"
-    ],
+    "types": ["vitest/globals", "node"],
     "paths": {
-      "@app/contracts": [
-        "./libs/contracts/src/index.ts"
-      ],
-      "@app/contracts/*": [
-        "./libs/contracts/src/*"
-      ],
-      "@app/observability": [
-        "./libs/observability/src/index.ts"
-      ],
-      "@app/observability/*": [
-        "./libs/observability/src/*"
-      ]
-    },
-    
+      "@app/contracts": ["./libs/contracts/src/index.ts"],
+      "@app/contracts/*": ["./libs/contracts/src/*"],
+      "@app/observability": ["./libs/observability/src/index.ts"],
+      "@app/observability/*": ["./libs/observability/src/*"]
+    }
   },
   "files": [],
   "references": [
@@ -51,6 +39,10 @@
     },
     {
       "path": "./apps/shopping-cart-service/tsconfig.app.json"
+    },
+
+    {
+      "path": "./apps/order-service/tsconfig.app.json"
     }
   ]
 }

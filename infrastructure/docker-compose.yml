@@ -92,6 +92,8 @@ services:
       PRODUCT_CATALOG_URL: http://product-catalog-service:3001
       USER_SERVICE_URL: http://user-service:3002
       CART_SERVICE_URL: http://shopping-cart-service:3003
+      ORDER_SERVICE_URL: http://order-service:3004
+
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
 
       OTEL_SERVICE_NAME: api-gateway
@@ -108,6 +110,7 @@ services:
       - product-catalog-service
       - user-service
       - shopping-cart-service
+      - order-service
     networks:
       - ecommerce
     restart: unless-stopped
@@ -189,6 +192,39 @@ services:
         condition: service_healthy
       product-catalog-service:
         condition: service_started
+    networks:
+      - ecommerce
+    restart: unless-stopped
+
+  order-service:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        APP_NAME: order-service
+    expose:
+      - "3004"
+    environment:
+      PORT: 3004
+      ORDER_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@postgres:5432/order_service?schema=public
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+
+      SHOPPING_CART_URL: http://shopping-cart-service:3003
+      PRODUCT_CATALOG_URL: http://product-catalog-service:3001
+
+      OTEL_SERVICE_NAME: order-service
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
+      OTEL_PROPAGATORS: tracecontext,baggage
+      NODE_OPTIONS: >-
+        --experimental-loader=@opentelemetry/instrumentation/hook.mjs
+        --import=@opentelemetry/auto-instrumentations-node/register
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - ecommerce
     restart: unless-stopped
