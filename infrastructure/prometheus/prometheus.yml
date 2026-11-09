@@ -18,3 +18,11 @@ scrape_configs:
   - job_name: 'shopping-cart-service'
     static_configs:
       - targets: ['shopping-cart-service:3003']
+
+  - job_name: 'order-service'
+    static_configs:
+      - targets: ['order-service:3004']
+
+  - job_name: 'payment-service'
+    static_configs:
+      - targets: ['payment-service:3005']
