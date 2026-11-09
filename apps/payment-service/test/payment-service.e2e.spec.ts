@@ -29,6 +29,7 @@ describe('Payments API (e2e)', () => {
 
   const mockOrderClient = {
     getOrder: vi.fn(),
+    updateOrderStatus: vi.fn(),
   };
 
   const mockOrder = {
@@ -87,6 +88,8 @@ describe('Payments API (e2e)', () => {
   beforeEach(async () => {
     await prisma.payment.deleteMany();
     mockOrderClient.getOrder.mockReset();
+    mockOrderClient.updateOrderStatus.mockReset();
+    mockOrderClient.updateOrderStatus.mockResolvedValue(mockOrder);
   });
 
   describe('Authentication', () => {
@@ -109,14 +112,11 @@ describe('Payments API (e2e)', () => {
       mockOrderClient.getOrder.mockResolvedValue(mockOrder);
     });
 
-    it('should create a payment for an order', async () => {
+    it('should create a payment using the order total', async () => {
       const response = await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
-        .send({
-          orderId: 10,
-          amount: 99.99,
-        })
+        .send({ orderId: 10 })
         .expect(201);
 
       expect(response.body.id).toBeDefined();
@@ -126,14 +126,32 @@ describe('Payments API (e2e)', () => {
       expect(response.body.status).toBe('PENDING');
     });
 
-    it('should return 400 when the amount is invalid', async () => {
+    it('should return 400 when the order id is invalid', async () => {
       await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
-        .send({
-          orderId: 10,
-          amount: -10,
-        })
+        .send({ orderId: 0 })
+        .expect(400);
+    });
+
+    it('should reject a client-supplied amount', async () => {
+      await request(app.getHttpServer())
+        .post('/payments')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ orderId: 10, amount: 1 })
+        .expect(400);
+    });
+
+    it('should return 400 when the order is not payable', async () => {
+      mockOrderClient.getOrder.mockResolvedValue({
+        ...mockOrder,
+        status: 'CANCELLED',
+      });
+
+      await request(app.getHttpServer())
+        .post('/payments')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ orderId: 10 })
         .expect(400);
     });
 
@@ -141,20 +159,33 @@ describe('Payments API (e2e)', () => {
       await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
-        .send({
-          orderId: 10,
-          amount: 99.99,
-        })
+        .send({ orderId: 10 })
         .expect(201);
 
       await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
-        .send({
-          orderId: 10,
-          amount: 99.99,
-        })
+        .send({ orderId: 10 })
         .expect(400);
+    });
+
+    it('should return the same payment for a repeated idempotency key', async () => {
+      const first = await request(app.getHttpServer())
+        .post('/payments')
+        .set('Authorization', `Bearer ${token}`)
+        .set('Idempotency-Key', 'checkout-key')
+        .send({ orderId: 10 })
+        .expect(201);
+
+      const second = await request(app.getHttpServer())
+        .post('/payments')
+        .set('Authorization', `Bearer ${token}`)
+        .set('Idempotency-Key', 'checkout-key')
+        .send({ orderId: 10 })
+        .expect(201);
+
+      expect(second.body.id).toBe(first.body.id);
+      expect(await prisma.payment.count()).toBe(1);
     });
 
     it('should return 502 when the order service is unavailable', async () => {
@@ -166,10 +197,7 @@ describe('Payments API (e2e)', () => {
       await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
-        .send({
-          orderId: 999,
-          amount: 99.99,
-        })
+        .send({ orderId: 999 })
         .expect(502);
     });
   });
@@ -181,12 +209,12 @@ describe('Payments API (e2e)', () => {
       await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
-        .send({ orderId: 10, amount: 99.99 })
+        .send({ orderId: 10 })
         .expect(201);
       await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
-        .send({ orderId: 11, amount: 49.99 })
+        .send({ orderId: 11 })
         .expect(201);
 
       const response = await request(app.getHttpServer())
@@ -217,7 +245,7 @@ describe('Payments API (e2e)', () => {
       const created = await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
-        .send({ orderId: 10, amount: 99.99 })
+        .send({ orderId: 10 })
         .expect(201);
 
       const response = await request(app.getHttpServer())
@@ -238,13 +266,13 @@ describe('Payments API (e2e)', () => {
   });
 
   describe('POST /payments/:id/capture', () => {
-    it('should capture a pending payment', async () => {
+    it('should capture a pending payment and confirm the order', async () => {
       mockOrderClient.getOrder.mockResolvedValue(mockOrder);
 
       const created = await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
-        .send({ orderId: 10, amount: 99.99 })
+        .send({ orderId: 10 })
         .expect(201);
 
       const response = await request(app.getHttpServer())
@@ -254,15 +282,20 @@ describe('Payments API (e2e)', () => {
 
       expect(response.body.status).toBe('COMPLETED');
       expect(response.body.providerPaymentId).toBeDefined();
+      expect(mockOrderClient.updateOrderStatus).toHaveBeenCalledWith(
+        10,
+        `Bearer ${token}`,
+        'CONFIRMED',
+      );
     });
 
-    it('should return 400 when capturing an already completed payment', async () => {
+    it('should re-sync the order when capturing an already completed payment', async () => {
       mockOrderClient.getOrder.mockResolvedValue(mockOrder);
 
       const created = await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
-        .send({ orderId: 10, amount: 99.99 })
+        .send({ orderId: 10 })
         .expect(201);
 
       await request(app.getHttpServer())
@@ -270,27 +303,38 @@ describe('Payments API (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      await request(app.getHttpServer())
+      mockOrderClient.updateOrderStatus.mockClear();
+
+      const response = await request(app.getHttpServer())
         .post(`/payments/${created.body.id}/capture`)
         .set('Authorization', `Bearer ${token}`)
-        .expect(400);
+        .expect(200);
+
+      expect(response.body.status).toBe('COMPLETED');
+      expect(mockOrderClient.updateOrderStatus).toHaveBeenCalledWith(
+        10,
+        `Bearer ${token}`,
+        'CONFIRMED',
+      );
     });
   });
 
   describe('POST /payments/:id/refund', () => {
-    it('should refund a completed payment', async () => {
+    it('should refund a completed payment and cancel the order', async () => {
       mockOrderClient.getOrder.mockResolvedValue(mockOrder);
 
       const created = await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
-        .send({ orderId: 10, amount: 99.99 })
+        .send({ orderId: 10 })
         .expect(201);
 
       await request(app.getHttpServer())
         .post(`/payments/${created.body.id}/capture`)
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
+
+      mockOrderClient.updateOrderStatus.mockClear();
 
       const response = await request(app.getHttpServer())
         .post(`/payments/${created.body.id}/refund`)
@@ -298,6 +342,11 @@ describe('Payments API (e2e)', () => {
         .expect(200);
 
       expect(response.body.status).toBe('REFUNDED');
+      expect(mockOrderClient.updateOrderStatus).toHaveBeenCalledWith(
+        10,
+        `Bearer ${token}`,
+        'CANCELLED',
+      );
     });
 
     it('should return 400 when refunding a non-completed payment', async () => {
@@ -306,7 +355,7 @@ describe('Payments API (e2e)', () => {
       const created = await request(app.getHttpServer())
         .post('/payments')
         .set('Authorization', `Bearer ${token}`)
-        .send({ orderId: 10, amount: 99.99 })
+        .send({ orderId: 10 })
         .expect(201);
 
       await request(app.getHttpServer())

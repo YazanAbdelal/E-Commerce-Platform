@@ -8,6 +8,8 @@ import {
 import { PrismaService } from './prisma/prisma.service.js';
 import { CartClient } from './clients/cart.client.js';
 import { ProductCatalogClient } from './clients/product-catalog.client.js';
+import { OrderStatus } from './generated/prisma/enums.js';
+import type { UpdatableOrderStatus } from './dto/update-order-status.dto.js';
 
 @Injectable()
 export class OrderServiceService {
@@ -112,5 +114,66 @@ export class OrderServiceService {
     }
 
     return order;
+  }
+
+  async updateOrderStatus(
+    userId: number,
+    orderId: number,
+    status: UpdatableOrderStatus,
+  ) {
+    const order = await this.getOrder(userId, orderId);
+
+    // Treat repeating the same transition as a no-op so callers can safely
+    // retry after a network failure.
+    if (order.status === status) {
+      return order;
+    }
+
+    const allowedFrom: Record<UpdatableOrderStatus, OrderStatus[]> = {
+      [OrderStatus.CONFIRMED]: [OrderStatus.PENDING],
+      [OrderStatus.CANCELLED]: [
+        OrderStatus.PENDING,
+        OrderStatus.CONFIRMED,
+        OrderStatus.PROCESSING,
+      ],
+    };
+
+    const fromStatuses = allowedFrom[status];
+
+    // Guard here as well so the service stays correct even when it is called
+    // without the HTTP validation pipe (for example from another service).
+    if (!fromStatuses) {
+      throw new BadRequestException(`Unsupported order status: ${status}`);
+    }
+
+    if (!fromStatuses.includes(order.status)) {
+      throw new BadRequestException(
+        `Cannot change order status from ${order.status} to ${status}`,
+      );
+    }
+
+    const result = await this.prisma.order.updateMany({
+      where: {
+        id: orderId,
+        userId,
+        status: { in: fromStatuses },
+      },
+      data: { status },
+    });
+
+    if (result.count === 0) {
+      // Another request may have changed the status concurrently.
+      const current = await this.getOrder(userId, orderId);
+
+      if (current.status === status) {
+        return current;
+      }
+
+      throw new BadRequestException(
+        `Cannot change order status from ${current.status} to ${status}`,
+      );
+    }
+
+    return this.getOrder(userId, orderId);
   }
 }

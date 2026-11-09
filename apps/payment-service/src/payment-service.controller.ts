@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -14,6 +15,7 @@ import {
 import { PaymentServiceService } from './payment-service.service.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import type { AuthenticatedRequest } from './auth/guards/jwt-auth.guard.js';
+import { CreatePaymentDto } from './dto/create-payment.dto.js';
 
 @Controller('payments')
 @UseGuards(JwtAuthGuard)
@@ -25,13 +27,14 @@ export class PaymentServiceController {
   @Post()
   createPayment(
     @Req() request: AuthenticatedRequest,
-    @Body() body: { orderId: number; amount: number },
+    @Body() body: CreatePaymentDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ) {
     return this.paymentServiceService.createPayment(
       request.user.sub,
       body.orderId,
-      body.amount,
       request.headers.authorization!,
+      idempotencyKey,
     );
   }
 
@@ -57,6 +60,7 @@ export class PaymentServiceController {
     return this.paymentServiceService.capturePayment(
       request.user.sub,
       paymentId,
+      request.headers.authorization!,
     );
   }
 
@@ -69,6 +73,7 @@ export class PaymentServiceController {
     return this.paymentServiceService.refundPayment(
       request.user.sub,
       paymentId,
+      request.headers.authorization!,
     );
   }
 }

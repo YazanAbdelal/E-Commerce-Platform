@@ -1,6 +1,8 @@
 import {
+  Body,
   Controller,
   Get,
+  Patch,
   Post,
   Param,
   ParseIntPipe,
@@ -11,6 +13,7 @@ import {
 import { OrderServiceService } from './order-service.service.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import type { AuthenticatedRequest } from './auth/guards/jwt-auth.guard.js';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto.js';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
@@ -42,6 +45,19 @@ export class OrderServiceController {
     return this.orderServiceService.getOrder(
       request.user.sub,
       orderId,
+    );
+  }
+
+  @Patch(':id/status')
+  updateOrderStatus(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) orderId: number,
+    @Body() body: UpdateOrderStatusDto,
+  ) {
+    return this.orderServiceService.updateOrderStatus(
+      request.user.sub,
+      orderId,
+      body.status,
     );
   }
 }

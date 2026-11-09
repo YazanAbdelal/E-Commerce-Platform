@@ -12,6 +12,7 @@ describe('OrderServiceController', () => {
     createOrder: vi.fn(),
     getOrders: vi.fn(),
     getOrder: vi.fn(),
+    updateOrderStatus: vi.fn(),
   };
 
   const mockJwtAuthGuard = {
@@ -80,6 +81,24 @@ describe('OrderServiceController', () => {
     const result = await controller.getOrder(request, 1);
 
     expect(mockOrderServiceService.getOrder).toHaveBeenCalledWith(1, 1);
+    expect(result).toEqual(expected);
+  });
+
+  it('should update an order status', async () => {
+    const request = { user: { sub: 1 } } as unknown as AuthenticatedRequest;
+
+    const expected = { id: 1, userId: 1, status: 'CONFIRMED' };
+    mockOrderServiceService.updateOrderStatus.mockResolvedValue(expected);
+
+    const result = await controller.updateOrderStatus(request, 1, {
+      status: 'CONFIRMED',
+    });
+
+    expect(mockOrderServiceService.updateOrderStatus).toHaveBeenCalledWith(
+      1,
+      1,
+      'CONFIRMED',
+    );
     expect(result).toEqual(expected);
   });
 });

@@ -19,6 +19,7 @@ describe('OrderServiceService', () => {
       create: vi.fn(),
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      updateMany: vi.fn(),
     },
   };
 
@@ -291,6 +292,107 @@ describe('OrderServiceService', () => {
       mockPrismaService.order.findFirst.mockResolvedValue(null);
 
       await expect(service.getOrder(2, 1)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateOrderStatus', () => {
+    it('should confirm a pending order', async () => {
+      const pending = { id: 1, userId: 1, status: 'PENDING' };
+      const confirmed = { ...pending, status: 'CONFIRMED' };
+      mockPrismaService.order.findFirst
+        .mockResolvedValueOnce(pending)
+        .mockResolvedValueOnce(confirmed);
+      mockPrismaService.order.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.updateOrderStatus(1, 1, 'CONFIRMED');
+
+      expect(mockPrismaService.order.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 1,
+          userId: 1,
+          status: { in: ['PENDING'] },
+        },
+        data: { status: 'CONFIRMED' },
+      });
+      expect(result).toEqual(confirmed);
+    });
+
+    it('should treat confirming an already confirmed order as a no-op', async () => {
+      const confirmed = { id: 1, userId: 1, status: 'CONFIRMED' };
+      mockPrismaService.order.findFirst.mockResolvedValue(confirmed);
+
+      const result = await service.updateOrderStatus(1, 1, 'CONFIRMED');
+
+      expect(result).toEqual(confirmed);
+      expect(mockPrismaService.order.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should cancel a confirmed order', async () => {
+      const confirmed = { id: 1, userId: 1, status: 'CONFIRMED' };
+      const cancelled = { ...confirmed, status: 'CANCELLED' };
+      mockPrismaService.order.findFirst
+        .mockResolvedValueOnce(confirmed)
+        .mockResolvedValueOnce(cancelled);
+      mockPrismaService.order.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.updateOrderStatus(1, 1, 'CANCELLED');
+
+      expect(mockPrismaService.order.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 1,
+          userId: 1,
+          status: { in: ['PENDING', 'CONFIRMED', 'PROCESSING'] },
+        },
+        data: { status: 'CANCELLED' },
+      });
+      expect(result).toEqual(cancelled);
+    });
+
+    it('should reject an unsupported status', async () => {
+      mockPrismaService.order.findFirst.mockResolvedValue({
+        id: 1,
+        userId: 1,
+        status: 'PENDING',
+      });
+
+      await expect(
+        service.updateOrderStatus(1, 1, 'SHIPPED' as never),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrismaService.order.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should reject an invalid status transition', async () => {
+      mockPrismaService.order.findFirst.mockResolvedValue({
+        id: 1,
+        userId: 1,
+        status: 'SHIPPED',
+      });
+
+      await expect(
+        service.updateOrderStatus(1, 1, 'CONFIRMED'),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrismaService.order.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should handle a concurrent transition to the same status', async () => {
+      const pending = { id: 1, userId: 1, status: 'PENDING' };
+      const confirmed = { ...pending, status: 'CONFIRMED' };
+      mockPrismaService.order.findFirst
+        .mockResolvedValueOnce(pending)
+        .mockResolvedValueOnce(confirmed);
+      mockPrismaService.order.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.updateOrderStatus(1, 1, 'CONFIRMED');
+
+      expect(result).toEqual(confirmed);
+    });
+
+    it('should throw NotFoundException when the order does not exist', async () => {
+      mockPrismaService.order.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.updateOrderStatus(1, 999, 'CONFIRMED'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

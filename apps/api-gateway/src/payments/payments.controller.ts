@@ -2,6 +2,9 @@ import {
     Body,
     Controller,
     Get,
+    Headers,
+    HttpCode,
+    HttpStatus,
     Param,
     ParseIntPipe,
     Post,
@@ -13,6 +16,7 @@ import type { Request } from 'express';
 
 import { PaymentClient } from '../clients/payment.client.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import { CreatePaymentDto } from './dto/create-payment.dto.js';
 
 type RequestWithId = Request & {
     id: string;
@@ -26,13 +30,14 @@ export class PaymentsController {
     @Post()
     createPayment(
         @Req() request: RequestWithId,
-        @Body() body: { orderId: number; amount: number },
+        @Body() body: CreatePaymentDto,
+        @Headers('idempotency-key') idempotencyKey?: string,
     ) {
         return this.paymentClient.createPayment(
             request.headers.authorization!,
             request.id,
             body.orderId,
-            body.amount,
+            idempotencyKey,
         );
     }
 
@@ -57,6 +62,7 @@ export class PaymentsController {
     }
 
     @Post(':id/capture')
+    @HttpCode(HttpStatus.OK)
     capturePayment(
         @Req() request: RequestWithId,
         @Param('id', ParseIntPipe) paymentId: number,
@@ -69,6 +75,7 @@ export class PaymentsController {
     }
 
     @Post(':id/refund')
+    @HttpCode(HttpStatus.OK)
     refundPayment(
         @Req() request: RequestWithId,
         @Param('id', ParseIntPipe) paymentId: number,

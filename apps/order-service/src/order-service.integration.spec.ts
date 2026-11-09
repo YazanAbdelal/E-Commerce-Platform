@@ -203,4 +203,92 @@ describe('OrderServiceService integration', () => {
       await expect(service.getOrder(2, created.id)).rejects.toThrow();
     });
   });
+
+  describe('updateOrderStatus', () => {
+    const createOrder = async () => {
+      mockCartClient.getCart.mockResolvedValue({
+        id: 1,
+        userId: 1,
+        items: [{ productId: 42, quantity: 1 }],
+      });
+      mockProductCatalogClient.findOne.mockResolvedValue({
+        id: 42,
+        name: 'Laptop',
+        price: 1000,
+      });
+
+      return service.createOrder(userId, token);
+    };
+
+    it('should confirm a pending order in the database', async () => {
+      const created = await createOrder();
+
+      const confirmed = await service.updateOrderStatus(
+        userId,
+        created.id,
+        'CONFIRMED',
+      );
+
+      expect(confirmed.status).toBe('CONFIRMED');
+
+      const saved = await prisma.order.findUnique({
+        where: { id: created.id },
+      });
+      expect(saved!.status).toBe('CONFIRMED');
+    });
+
+    it('should treat confirming an already confirmed order as a no-op', async () => {
+      const created = await createOrder();
+      await service.updateOrderStatus(userId, created.id, 'CONFIRMED');
+
+      const confirmed = await service.updateOrderStatus(
+        userId,
+        created.id,
+        'CONFIRMED',
+      );
+
+      expect(confirmed.status).toBe('CONFIRMED');
+    });
+
+    it('should cancel a confirmed order in the database', async () => {
+      const created = await createOrder();
+      await service.updateOrderStatus(userId, created.id, 'CONFIRMED');
+
+      const cancelled = await service.updateOrderStatus(
+        userId,
+        created.id,
+        'CANCELLED',
+      );
+
+      expect(cancelled.status).toBe('CANCELLED');
+
+      const saved = await prisma.order.findUnique({
+        where: { id: created.id },
+      });
+      expect(saved!.status).toBe('CANCELLED');
+    });
+
+    it('should reject an invalid status transition', async () => {
+      const created = await createOrder();
+      await service.updateOrderStatus(userId, created.id, 'CANCELLED');
+
+      await expect(
+        service.updateOrderStatus(userId, created.id, 'CONFIRMED'),
+      ).rejects.toThrow();
+    });
+
+    it('should throw when the order does not exist', async () => {
+      await expect(
+        service.updateOrderStatus(userId, 999999999, 'CONFIRMED'),
+      ).rejects.toThrow();
+    });
+
+    it('should throw when the order belongs to another user', async () => {
+      const created = await createOrder();
+
+      await expect(
+        service.updateOrderStatus(2, created.id, 'CONFIRMED'),
+      ).rejects.toThrow();
+    });
+  });
 });

@@ -18,6 +18,7 @@ model Payment {
   id          Int          @id @default(autoincrement())
   userId      Int
   orderId     Int          @unique
+  idempotencyKey String?   @unique
   amount      Decimal      @db.Decimal(10, 2)
   currency    String       @default("usd")
   status      PaymentStatus @default(PENDING)

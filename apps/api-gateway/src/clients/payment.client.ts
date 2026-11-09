@@ -24,16 +24,24 @@ export class PaymentClient {
         authorization: string,
         requestId: string,
         orderId: number,
-        amount: number,
+        idempotencyKey?: string,
     ): Promise<Payment> {
+        const headers = new Headers({
+            'Content-Type': 'application/json',
+        });
+
+        if (idempotencyKey) {
+            headers.set('Idempotency-Key', idempotencyKey);
+        }
+
         const response = await this.sendRequest(
             '/payments',
             authorization,
             requestId,
             {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ orderId, amount }),
+                headers,
+                body: JSON.stringify({ orderId }),
             },
         );
 

@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 import { OrderServiceModule } from './order-service.module.js';
 
@@ -8,6 +9,14 @@ async function bootstrap() {
   });
 
   app.useLogger(app.get(Logger));
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
 
   await app.listen(process.env.PORT ?? 3004);
 }

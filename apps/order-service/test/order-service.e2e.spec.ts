@@ -27,6 +27,7 @@ describe('Orders API (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let token: string;
+  let tokenUser2: string;
 
   const mockCartClient = {
     getCart: vi.fn(),
@@ -78,6 +79,7 @@ describe('Orders API (e2e)', () => {
     // Generate a real JWT using the application's configured JwtService.
     const jwtService = app.get(JwtService);
     token = await jwtService.signAsync({ sub: 1 });
+    tokenUser2 = await jwtService.signAsync({ sub: 2 });
   });
 
   afterAll(async () => {
@@ -98,6 +100,10 @@ describe('Orders API (e2e)', () => {
       await request(app.getHttpServer()).post('/orders').expect(401);
       await request(app.getHttpServer()).get('/orders').expect(401);
       await request(app.getHttpServer()).get('/orders/1').expect(401);
+      await request(app.getHttpServer())
+        .patch('/orders/1/status')
+        .send({ status: 'CONFIRMED' })
+        .expect(401);
     });
 
     it('should reject invalid JWTs', async () => {
@@ -245,6 +251,92 @@ describe('Orders API (e2e)', () => {
       await request(app.getHttpServer())
         .get('/orders/999999999')
         .set('Authorization', `Bearer ${token}`)
+        .expect(404);
+    });
+  });
+
+  describe('PATCH /orders/:id/status', () => {
+    const createOrder = async () => {
+      mockCartClient.getCart.mockResolvedValue({
+        id: 1,
+        userId: 1,
+        items: [{ productId: 42, quantity: 1 }],
+      });
+      mockProductCatalogClient.findOne.mockResolvedValue({
+        id: 42,
+        name: 'Laptop',
+        price: 1000,
+      });
+
+      return request(app.getHttpServer())
+        .post('/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(201);
+    };
+
+    it('should confirm a pending order', async () => {
+      const created = await createOrder();
+
+      const response = await request(app.getHttpServer())
+        .patch(`/orders/${created.body.id}/status`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'CONFIRMED' })
+        .expect(200);
+
+      expect(response.body.status).toBe('CONFIRMED');
+    });
+
+    it('should cancel a confirmed order', async () => {
+      const created = await createOrder();
+
+      await request(app.getHttpServer())
+        .patch(`/orders/${created.body.id}/status`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'CONFIRMED' })
+        .expect(200);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/orders/${created.body.id}/status`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'CANCELLED' })
+        .expect(200);
+
+      expect(response.body.status).toBe('CANCELLED');
+    });
+
+    it('should reject an unsupported status', async () => {
+      const created = await createOrder();
+
+      await request(app.getHttpServer())
+        .patch(`/orders/${created.body.id}/status`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'SHIPPED' })
+        .expect(400);
+    });
+
+    it('should reject an invalid status transition', async () => {
+      const created = await createOrder();
+
+      await request(app.getHttpServer())
+        .patch(`/orders/${created.body.id}/status`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'CANCELLED' })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .patch(`/orders/${created.body.id}/status`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status: 'CONFIRMED' })
+        .expect(400);
+    });
+
+    it('should return 404 for an order belonging to another user', async () => {
+      const created = await createOrder();
+
+      await request(app.getHttpServer())
+        .patch(`/orders/${created.body.id}/status`)
+        .set('Authorization', `Bearer ${tokenUser2}`)
+        .send({ status: 'CONFIRMED' })
         .expect(404);
     });
   });

@@ -24,6 +24,7 @@ describe('PaymentServiceService integration', () => {
 
   const mockOrderClient = {
     getOrder: vi.fn(),
+    updateOrderStatus: vi.fn(),
   };
 
   const mockOrder = {
@@ -58,16 +59,17 @@ describe('PaymentServiceService integration', () => {
   beforeEach(async () => {
     await prisma.payment.deleteMany();
     mockOrderClient.getOrder.mockReset();
+    mockOrderClient.updateOrderStatus.mockReset();
+    mockOrderClient.updateOrderStatus.mockResolvedValue(mockOrder);
   });
 
   describe('createPayment', () => {
-    it('should persist a payment with the correct amount and status', async () => {
+    it('should persist a payment using the order total', async () => {
       mockOrderClient.getOrder.mockResolvedValue(mockOrder);
 
       const payment = await service.createPayment(
         userId,
         orderId,
-        99.99,
         authorization,
       );
 
@@ -86,22 +88,48 @@ describe('PaymentServiceService integration', () => {
       expect(savedPayment!.status).toBe('PENDING');
     });
 
-    it('should not persist a payment when the amount is invalid', async () => {
-      await expect(
-        service.createPayment(userId, orderId, -10, authorization),
-      ).rejects.toThrow();
+    it('should ignore a client amount because it is not part of the request', async () => {
+      mockOrderClient.getOrder.mockResolvedValue({
+        ...mockOrder,
+        totalAmount: '2025.00',
+      });
 
-      const paymentCount = await prisma.payment.count();
-      expect(paymentCount).toBe(0);
+      const payment = await service.createPayment(
+        userId,
+        orderId,
+        authorization,
+      );
+
+      expect(Number(payment.amount)).toBe(2025);
+    });
+
+    it('should return the same payment for a repeated idempotency key', async () => {
+      mockOrderClient.getOrder.mockResolvedValue(mockOrder);
+
+      const first = await service.createPayment(
+        userId,
+        orderId,
+        authorization,
+        'checkout-key',
+      );
+      const second = await service.createPayment(
+        userId,
+        orderId,
+        authorization,
+        'checkout-key',
+      );
+
+      expect(second.id).toBe(first.id);
+      expect(await prisma.payment.count()).toBe(1);
     });
 
     it('should not persist a duplicate payment for the same order', async () => {
       mockOrderClient.getOrder.mockResolvedValue(mockOrder);
 
-      await service.createPayment(userId, orderId, 99.99, authorization);
+      await service.createPayment(userId, orderId, authorization);
 
       await expect(
-        service.createPayment(userId, orderId, 99.99, authorization),
+        service.createPayment(userId, orderId, authorization),
       ).rejects.toThrow();
 
       const paymentCount = await prisma.payment.count({
@@ -110,13 +138,26 @@ describe('PaymentServiceService integration', () => {
       expect(paymentCount).toBe(1);
     });
 
+    it('should not persist a payment for an order that is not pending', async () => {
+      mockOrderClient.getOrder.mockResolvedValue({
+        ...mockOrder,
+        status: 'CANCELLED',
+      });
+
+      await expect(
+        service.createPayment(userId, orderId, authorization),
+      ).rejects.toThrow();
+
+      expect(await prisma.payment.count()).toBe(0);
+    });
+
     it('should not persist a payment when the order service is unavailable', async () => {
       mockOrderClient.getOrder.mockRejectedValue(
         new Error('Connection refused'),
       );
 
       await expect(
-        service.createPayment(userId, orderId, 99.99, authorization),
+        service.createPayment(userId, orderId, authorization),
       ).rejects.toThrow();
 
       const paymentCount = await prisma.payment.count();
@@ -128,8 +169,8 @@ describe('PaymentServiceService integration', () => {
     it('should return all payments for a user from the database', async () => {
       mockOrderClient.getOrder.mockResolvedValue(mockOrder);
 
-      await service.createPayment(userId, orderId, 99.99, authorization);
-      await service.createPayment(userId, orderId + 1, 49.99, authorization);
+      await service.createPayment(userId, orderId, authorization);
+      await service.createPayment(userId, orderId + 1, authorization);
 
       const payments = await service.getPayments(userId);
 
@@ -151,7 +192,6 @@ describe('PaymentServiceService integration', () => {
       const created = await service.createPayment(
         userId,
         orderId,
-        99.99,
         authorization,
       );
 
@@ -171,7 +211,6 @@ describe('PaymentServiceService integration', () => {
       const created = await service.createPayment(
         userId,
         orderId,
-        99.99,
         authorization,
       );
 
@@ -180,20 +219,28 @@ describe('PaymentServiceService integration', () => {
   });
 
   describe('capturePayment', () => {
-    it('should capture a pending payment', async () => {
+    it('should capture a pending payment and confirm the order', async () => {
       mockOrderClient.getOrder.mockResolvedValue(mockOrder);
 
       const created = await service.createPayment(
         userId,
         orderId,
-        99.99,
         authorization,
       );
 
-      const captured = await service.capturePayment(userId, created.id);
+      const captured = await service.capturePayment(
+        userId,
+        created.id,
+        authorization,
+      );
 
       expect(captured.status).toBe('COMPLETED');
       expect(captured.providerPaymentId).toBeDefined();
+      expect(mockOrderClient.updateOrderStatus).toHaveBeenCalledWith(
+        orderId,
+        authorization,
+        'CONFIRMED',
+      );
 
       const savedPayment = await prisma.payment.findUnique({
         where: { id: created.id },
@@ -201,38 +248,56 @@ describe('PaymentServiceService integration', () => {
       expect(savedPayment!.status).toBe('COMPLETED');
     });
 
-    it('should throw when capturing an already completed payment', async () => {
+    it('should re-sync the order when capturing an already completed payment', async () => {
       mockOrderClient.getOrder.mockResolvedValue(mockOrder);
 
       const created = await service.createPayment(
         userId,
         orderId,
-        99.99,
         authorization,
       );
-      await service.capturePayment(userId, created.id);
+      await service.capturePayment(userId, created.id, authorization);
+      mockOrderClient.updateOrderStatus.mockClear();
 
-      await expect(
-        service.capturePayment(userId, created.id),
-      ).rejects.toThrow();
+      const captured = await service.capturePayment(
+        userId,
+        created.id,
+        authorization,
+      );
+
+      expect(captured.status).toBe('COMPLETED');
+      expect(mockOrderClient.updateOrderStatus).toHaveBeenCalledWith(
+        orderId,
+        authorization,
+        'CONFIRMED',
+      );
     });
   });
 
   describe('refundPayment', () => {
-    it('should refund a completed payment', async () => {
+    it('should refund a completed payment and cancel the order', async () => {
       mockOrderClient.getOrder.mockResolvedValue(mockOrder);
 
       const created = await service.createPayment(
         userId,
         orderId,
-        99.99,
         authorization,
       );
-      await service.capturePayment(userId, created.id);
+      await service.capturePayment(userId, created.id, authorization);
+      mockOrderClient.updateOrderStatus.mockClear();
 
-      const refunded = await service.refundPayment(userId, created.id);
+      const refunded = await service.refundPayment(
+        userId,
+        created.id,
+        authorization,
+      );
 
       expect(refunded.status).toBe('REFUNDED');
+      expect(mockOrderClient.updateOrderStatus).toHaveBeenCalledWith(
+        orderId,
+        authorization,
+        'CANCELLED',
+      );
 
       const savedPayment = await prisma.payment.findUnique({
         where: { id: created.id },
@@ -246,12 +311,11 @@ describe('PaymentServiceService integration', () => {
       const created = await service.createPayment(
         userId,
         orderId,
-        99.99,
         authorization,
       );
 
       await expect(
-        service.refundPayment(userId, created.id),
+        service.refundPayment(userId, created.id, authorization),
       ).rejects.toThrow();
     });
   });
