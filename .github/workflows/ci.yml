@@ -48,69 +48,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate Product Catalog Prisma Client
-        run: npx prisma generate --config apps/product-catalog-service/prisma.config.ts
-
-      - name: Apply Product Catalog migrations
-        run: npx prisma migrate deploy --config apps/product-catalog-service/prisma.config.ts
-
-      - name: Create Shopping Cart test database
+      - name: Generate Prisma clients
         run: |
-          PGPASSWORD=ecommerce_dev psql \
-            -h localhost \
-            -U ecommerce \
-            -d postgres \
-            -c "CREATE DATABASE shopping_cart_test;"
-
-      - name: Generate Shopping Cart Prisma Client
-        run: npx prisma generate --config apps/shopping-cart-service/prisma.config.ts
-
-      - name: Apply Shopping Cart migrations
-        run: npx prisma migrate deploy --config apps/shopping-cart-service/prisma.config.ts
-
-      - name: Create User Service test database
-        run: |
-          PGPASSWORD=ecommerce_dev psql \
-            -h localhost \
-            -U ecommerce \
-            -d postgres \
-            -c "CREATE DATABASE user_service_test;"
-
-      - name: Generate User Service Prisma Client
-        run: npx prisma generate --config apps/user-service/prisma.config.ts
+          npx prisma generate --config apps/product-catalog-service/prisma.config.ts
+          npx prisma generate --config apps/user-service/prisma.config.ts
+          npx prisma generate --config apps/shopping-cart-service/prisma.config.ts
+          npx prisma generate --config apps/order-service/prisma.config.ts
+          npx prisma generate --config apps/payment-service/prisma.config.ts
         env:
           USER_DATABASE_URL: postgresql://ecommerce:ecommerce_dev@localhost:5432/user_service_test
 
-      - name: Apply User Service migrations
-        run: npx prisma migrate deploy --config apps/user-service/prisma.test.config.ts
+      - name: Create test databases
+        run: npm run db:test:create
 
-      - name: Create Order Service test database
-        run: |
-          PGPASSWORD=ecommerce_dev psql \
-            -h localhost \
-            -U ecommerce \
-            -d postgres \
-            -c "CREATE DATABASE order_service_test;"
-
-      - name: Generate Order Service Prisma Client
-        run: npx prisma generate --config apps/order-service/prisma.config.ts
-
-      - name: Apply Order Service migrations
-        run: npx prisma migrate deploy --config apps/order-service/prisma.config.ts
-
-      - name: Create Payment Service test database
-        run: |
-          PGPASSWORD=ecommerce_dev psql \
-            -h localhost \
-            -U ecommerce \
-            -d postgres \
-            -c "CREATE DATABASE payment_service_test;"
-
-      - name: Generate Payment Service Prisma Client
-        run: npx prisma generate --config apps/payment-service/prisma.config.ts
-
-      - name: Apply Payment Service migrations
-        run: npx prisma migrate deploy --config apps/payment-service/prisma.config.ts
+      - name: Apply test migrations
+        run: npm run db:migrate:test
 
       - name: Build API Gateway
         run: npx nest build api-gateway
