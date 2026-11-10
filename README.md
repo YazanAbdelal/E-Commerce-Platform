@@ -56,32 +56,33 @@ propagate a request ID (`x-request-id`) for tracing across services.
 ### With Docker
 
 ```bash
-# 1. Install dependencies (needed for Prisma CLI and migrations)
-npm install
+# 1. Create a root .env with the variables listed below
+#    (at minimum JWT_SECRET, the five *_DATABASE_URL values, and the
+#    *_TEST_DATABASE_URL values if you plan to run the integration/E2E suites)
 
-# 2. Create a root .env with the variables listed below
-#    (at minimum JWT_SECRET and the five *_DATABASE_URL values)
-
-# 3. Start Postgres only, then apply migrations
+# 2. Build and start the stack
 cd infrastructure
-docker compose up -d postgres
-cd ..
-
-npx prisma migrate deploy --config apps/product-catalog-service/prisma.config.ts
-npx prisma migrate deploy --config apps/user-service/prisma.config.ts
-npx prisma migrate deploy --config apps/shopping-cart-service/prisma.config.ts
-npx prisma migrate deploy --config apps/order-service/prisma.config.ts
-npx prisma migrate deploy --config apps/payment-service/prisma.config.ts
-
-# 4. Start the rest of the stack
-cd infrastructure
-JWT_SECRET=<your-secret> docker compose up -d
+docker compose --env-file ../.env up -d --build
 ```
 
-The compose file lives in `infrastructure/` and reads `JWT_SECRET` from the
-environment (or from `infrastructure/.env`), so pass or export it when starting
-the stack. Containers do **not** run migrations on boot — the `postgres` init
-script in `infrastructure/postgres/init/` only creates the extra databases.
+The compose file lives in `infrastructure/`, so `--env-file ../.env` points it at
+the root `.env` (compose only reads `.env` from its own directory by default).
+
+Every service applies its own Prisma migrations on startup via
+`docker-entrypoint.sh` before the app boots, so the schema is always current
+when a container comes up. `api-gateway` has no database and skips this step.
+Set `RUN_MIGRATIONS=false` on a service to skip migrations (for example in a
+one-off shell).
+
+On a fresh volume, `infrastructure/postgres/init/` creates both the service
+databases and the `*_test` databases. If your Postgres volume already exists,
+those init scripts won't re-run — create and migrate the test databases from
+the host instead:
+
+```bash
+npm run db:test:create
+npm run db:migrate:test
+```
 
 Once running:
 
@@ -95,8 +96,11 @@ Once running:
 Rebuild images after code changes:
 
 ```bash
-cd infrastructure && docker compose up -d --build
+cd infrastructure && docker compose --env-file ../.env up -d --build
 ```
+
+nginx re-resolves the gateway on every request, so recreated containers do not
+leave it proxying to a stale address.
 
 ### Without Docker
 
@@ -109,13 +113,18 @@ npm install
 2. Create a `.env` in the repo root with the variables from
    [Environment Variables](#environment-variables).
 
-3. Create the databases (either use the init script or `createdb`):
+3. Create the databases (either use the init scripts or `createdb`):
 
 ```bash
 psql -U ecommerce -d postgres -f infrastructure/postgres/init/01-create-databases.sql
+psql -U ecommerce -d postgres -f infrastructure/postgres/init/02-create-test-databases.sql
 ```
 
-4. Apply Prisma migrations (the same five commands as above).
+4. Apply Prisma migrations:
+
+```bash
+npm run db:migrate
+```
 
 5. Start the services. Either start everything yourself in separate terminals:
 
@@ -152,6 +161,9 @@ individual services.
 | `npm run test:cov` | Unit tests with coverage |
 | `npm run test:integration` | Integration tests (`*.integration.spec.ts`) |
 | `npm run test:e2e` | E2E tests (`*.e2e.spec.ts`) |
+| `npm run db:migrate` | Apply Prisma migrations to the development databases |
+| `npm run db:migrate:test` | Apply Prisma migrations to the test databases |
+| `npm run db:test:create` | Create any missing `*_TEST_DATABASE_URL` databases |
 
 Build or serve a specific app:
 
@@ -177,7 +189,7 @@ needs.
 | `CART_DATABASE_URL` | shopping-cart | Cart database URL |
 | `ORDER_DATABASE_URL` | order-service | Order database URL |
 | `PAYMENT_DATABASE_URL` | payment-service | Payment database URL |
-| `*_TEST_DATABASE_URL` | tests | Test databases (see CI) |
+| `*_TEST_DATABASE_URL` | tests | Test databases used by `db:test:create`, `db:migrate:test`, and CI |
 | `PORT` | all | Overrides the default port |
 | `PRODUCT_CATALOG_URL` | gateway, cart, order | Defaults to `http://localhost:3001` |
 | `USER_SERVICE_URL` | gateway | Defaults to `http://localhost:3002` |
@@ -194,6 +206,13 @@ CART_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/shopping_
 ORDER_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/order_service?schema=public"
 PAYMENT_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/payment_service?schema=public"
 JWT_SECRET="<a-long-random-string>"
+
+# Only needed for `npm run db:test:create`, `db:migrate:test` and the test suites
+TEST_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/product_catalog_test?schema=public"
+USER_TEST_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/user_service_test?schema=public"
+CART_TEST_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/shopping_cart_test?schema=public"
+ORDER_TEST_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/order_service_test?schema=public"
+PAYMENT_TEST_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/payment_service_test?schema=public"
 ```
 
 ## Project Structure
@@ -213,9 +232,11 @@ e-commerce/
 ├── infrastructure/
 │   ├── docker-compose.yml        # Full stack: services, Postgres, observability
 │   ├── nginx/                    # Reverse proxy in front of the gateway
-│   ├── postgres/init/            # Creates the per-service databases
+│   ├── postgres/init/            # Creates the service and test databases
 │   ├── prometheus/               # Scrape config for all six services
 │   └── loki/, alloy/, tempo/     # Log and trace pipelines
+├── scripts/db.mjs                # db:migrate / db:migrate:test / db:test:create
+├── docker-entrypoint.sh          # Runs `prisma migrate deploy` before app start
 ├── .github/workflows/ci.yml      # Build, migrate, and test pipeline
 ├── requests.http                 # Example API requests
 └── nest-cli.json                 # Monorepo project definitions
@@ -295,8 +316,15 @@ npm run test:e2e         # E2E tests (boots real services against test DBs)
 ```
 
 Integration and E2E suites expect the test databases from `.env` to exist and
-to be migrated; E2E files run sequentially because they share and truncate
-those databases. `npm run test:e2e` also needs `JWT_SECRET` set.
+to be migrated. Prepare them once:
+
+```bash
+npm run db:test:create   # create the *_test databases that don't exist yet
+npm run db:migrate:test  # apply each service's migrations to its test database
+```
+
+E2E files run sequentially because they share and truncate those databases.
+`npm run test:e2e` also needs `JWT_SECRET` set.
 
 ## Observability
 
