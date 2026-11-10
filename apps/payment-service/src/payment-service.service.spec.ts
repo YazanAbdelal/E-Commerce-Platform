@@ -501,4 +501,163 @@ describe('PaymentServiceService', () => {
       expect(mockPrismaService.payment.updateMany).not.toHaveBeenCalled();
     });
   });
+
+  describe('idempotency key validation and unique constraint races', () => {
+    const userId = 1;
+    const orderId = 10;
+    const authorization = 'Bearer valid-token';
+
+    beforeEach(() => {
+      mockOrderClient.getOrder.mockResolvedValue({
+        id: orderId,
+        userId,
+        totalAmount: '99.99',
+        status: 'PENDING',
+      });
+      mockPrismaService.payment.findUnique.mockResolvedValue(null);
+    });
+
+    it('should reject a blank idempotency key', async () => {
+      await expect(
+        service.createPayment(userId, orderId, authorization, '   '),
+      ).rejects.toThrow('Invalid Idempotency-Key');
+      expect(mockOrderClient.getOrder).not.toHaveBeenCalled();
+    });
+
+    it('should reject an idempotency key longer than 128 characters', async () => {
+      await expect(
+        service.createPayment(userId, orderId, authorization, 'k'.repeat(129)),
+      ).rejects.toThrow('Invalid Idempotency-Key');
+      expect(mockOrderClient.getOrder).not.toHaveBeenCalled();
+    });
+
+    it('should report an existing order payment when the order unique constraint wins the race', async () => {
+      mockPrismaService.payment.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.createPayment(userId, orderId, authorization, 'checkout-key'),
+      ).rejects.toThrow('A payment already exists for this order');
+    });
+
+    it('should rethrow unexpected persistence errors unchanged', async () => {
+      mockPrismaService.payment.create.mockRejectedValue(
+        new Error('connection reset'),
+      );
+
+      await expect(
+        service.createPayment(userId, orderId, authorization),
+      ).rejects.toThrow('connection reset');
+    });
+  });
+
+  describe('capture and refund recovery paths', () => {
+    const userId = 1;
+    const paymentId = 1;
+    const authorization = 'Bearer valid-token';
+
+    const pendingPayment = {
+      id: paymentId,
+      userId,
+      orderId: 10,
+      amount: '99.99',
+      status: 'PENDING',
+      providerPaymentId: null,
+    };
+
+    const completedPayment = {
+      ...pendingPayment,
+      status: 'COMPLETED',
+    };
+
+    it('should reject a capture that lost the race to a refund', async () => {
+      mockPrismaService.payment.findFirst
+        .mockResolvedValueOnce(pendingPayment)
+        .mockResolvedValueOnce({ ...pendingPayment, status: 'REFUNDED' });
+      mockPrismaService.payment.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.capturePayment(userId, paymentId, authorization),
+      ).rejects.toThrow('Payment is already refunded');
+      expect(mockOrderClient.updateOrderStatus).not.toHaveBeenCalled();
+    });
+
+    it('should recover a refund that lost the race to another refund', async () => {
+      const refundedPayment = { ...completedPayment, status: 'REFUNDED' };
+      mockPrismaService.payment.findFirst
+        .mockResolvedValueOnce(completedPayment)
+        .mockResolvedValueOnce(refundedPayment);
+      mockPrismaService.payment.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.refundPayment(
+        userId,
+        paymentId,
+        authorization,
+      );
+
+      expect(result.status).toBe('REFUNDED');
+      expect(mockOrderClient.updateOrderStatus).toHaveBeenCalledWith(
+        completedPayment.orderId,
+        authorization,
+        'CANCELLED',
+      );
+    });
+
+    it('should reject a refund that lost the race to a non-refunded state', async () => {
+      mockPrismaService.payment.findFirst
+        .mockResolvedValueOnce(completedPayment)
+        .mockResolvedValueOnce({ ...completedPayment, status: 'PENDING' });
+      mockPrismaService.payment.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.refundPayment(userId, paymentId, authorization),
+      ).rejects.toThrow('Payment is already pending');
+    });
+
+    it('should propagate an order service client error during capture', async () => {
+      mockPrismaService.payment.findFirst
+        .mockResolvedValueOnce(pendingPayment)
+        .mockResolvedValueOnce(completedPayment);
+      mockPrismaService.payment.updateMany.mockResolvedValue({ count: 1 });
+      mockOrderClient.updateOrderStatus.mockRejectedValue(
+        new HttpException('Cannot change order status', 400),
+      );
+
+      await expect(
+        service.capturePayment(userId, paymentId, authorization),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it('should convert unexpected order service failures during capture into 502', async () => {
+      mockPrismaService.payment.findFirst
+        .mockResolvedValueOnce(pendingPayment)
+        .mockResolvedValueOnce(completedPayment);
+      mockPrismaService.payment.updateMany.mockResolvedValue({ count: 1 });
+      mockOrderClient.updateOrderStatus.mockRejectedValue(
+        new Error('socket hang up'),
+      );
+
+      await expect(
+        service.capturePayment(userId, paymentId, authorization),
+      ).rejects.toThrow('Order Service is unavailable');
+    });
+
+    it('should convert unexpected order service failures during refund into 502', async () => {
+      mockPrismaService.payment.findFirst
+        .mockResolvedValueOnce(completedPayment)
+        .mockResolvedValueOnce({ ...completedPayment, status: 'REFUNDED' });
+      mockPrismaService.payment.updateMany.mockResolvedValue({ count: 1 });
+      mockOrderClient.updateOrderStatus.mockRejectedValue(
+        new Error('socket hang up'),
+      );
+
+      await expect(
+        service.refundPayment(userId, paymentId, authorization),
+      ).rejects.toThrow(BadGatewayException);
+    });
+  });
 });

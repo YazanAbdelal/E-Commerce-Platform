@@ -75,4 +75,23 @@ describe('ProductCatalogClient', () => {
             BadGatewayException,
         );
     });
+
+    it('should fall back to the status text when a client error has no JSON body', async () => {
+        mockFetch.mockResolvedValue(
+            new Response('not-json', {
+                status: 422,
+                statusText: 'Unprocessable Entity',
+            }),
+        );
+
+        const error = await client
+            .findOne(42)
+            .catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(HttpException);
+        expect((error as HttpException).getStatus()).toBe(422);
+        expect((error as HttpException).getResponse()).toBe(
+            'Unprocessable Entity',
+        );
+    });
 });

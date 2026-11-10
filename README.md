@@ -311,6 +311,7 @@ requesting user before anything is charged.
 
 ```bash
 npm test                 # unit tests
+npm run test:cov         # unit tests with a coverage report
 npm run test:integration # integration tests (need the test databases)
 npm run test:e2e         # E2E tests (boots real services against test DBs)
 ```

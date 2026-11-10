@@ -394,5 +394,18 @@ describe('OrderServiceService', () => {
         service.updateOrderStatus(1, 999, 'CONFIRMED'),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('should reject a transition that lost a concurrent race', async () => {
+      const pending = { id: 1, userId: 1, status: 'PENDING' };
+      const cancelled = { ...pending, status: 'CANCELLED' };
+      mockPrismaService.order.findFirst
+        .mockResolvedValueOnce(pending)
+        .mockResolvedValueOnce(cancelled);
+      mockPrismaService.order.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.updateOrderStatus(1, 1, 'CONFIRMED'),
+      ).rejects.toThrow('Cannot change order status from CANCELLED to CONFIRMED');
+    });
   });
 });
