@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ProductsService } from './products.service.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { ProductsCacheService } from '../cache/products-cache.service.js';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 describe('ProductsService', () => {
@@ -19,8 +20,19 @@ describe('ProductsService', () => {
     },
   };
 
+  const mockCacheService = {
+    getList: vi.fn(),
+    setList: vi.fn(),
+    getProduct: vi.fn(),
+    setProduct: vi.fn(),
+    invalidate: vi.fn(),
+  };
+
   beforeEach(async () => {
     vi.resetAllMocks();
+
+    mockCacheService.getList.mockResolvedValue(null);
+    mockCacheService.getProduct.mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -28,6 +40,10 @@ describe('ProductsService', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: ProductsCacheService,
+          useValue: mockCacheService,
         },
       ],
     }).compile();
@@ -123,6 +139,8 @@ describe('ProductsService', () => {
     expect(mockPrismaService.product.create).toHaveBeenCalledWith({
       data: createProductDto,
     });
+
+    expect(mockCacheService.invalidate).toHaveBeenCalledWith();
   });
 
   it('should update a product', async () => {
@@ -152,6 +170,8 @@ describe('ProductsService', () => {
       where: { id: 1 },
       data: updateProductDto,
     });
+
+    expect(mockCacheService.invalidate).toHaveBeenCalledWith(1);
   });
 
   it('should throw NotFoundException when updating a nonexistent product', async () => {
@@ -179,6 +199,8 @@ describe('ProductsService', () => {
     expect(mockPrismaService.product.delete).toHaveBeenCalledWith({
       where: { id: 1 },
     });
+
+    expect(mockCacheService.invalidate).toHaveBeenCalledWith(1);
   });
 
   it('should throw NotFoundException when deleting a nonexistent product', async () => {
@@ -305,6 +327,68 @@ describe('ProductsService', () => {
       orderBy: {
         name: 'asc',
       },
+    });
+  });
+
+  describe('cache', () => {
+    const query = {
+      page: 1,
+      limit: 10,
+      sortBy: 'name' as const,
+      order: 'asc' as const,
+    };
+
+    it('should serve a cached product list without touching the database', async () => {
+      const cached = {
+        data: [{ id: 1, name: 'Cached Laptop', price: 999 }],
+        meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
+      };
+
+      mockCacheService.getList.mockResolvedValue(cached);
+
+      await expect(service.findAll(query)).resolves.toEqual(cached);
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('should cache the list it reads from the database', async () => {
+      const products = [{ id: 1, name: 'Laptop', price: 1200 }];
+      mockPrismaService.$transaction.mockResolvedValue([products, 1]);
+
+      const result = await service.findAll(query);
+
+      expect(mockCacheService.setList).toHaveBeenCalledWith(query, result);
+    });
+
+    it('should serve a cached product without touching the database', async () => {
+      const cached = { id: 1, name: 'Cached Laptop', price: 999 };
+      mockCacheService.getProduct.mockResolvedValue(cached);
+
+      await expect(service.findOne(1)).resolves.toEqual(cached);
+      expect(mockPrismaService.product.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('should cache the product it reads from the database', async () => {
+      const product = { id: 1, name: 'Laptop', price: 1200 };
+      mockPrismaService.product.findUnique.mockResolvedValue(product);
+
+      await service.findOne(1);
+
+      expect(mockCacheService.setProduct).toHaveBeenCalledWith(product);
+    });
+
+    it('should not cache a product that does not exist', async () => {
+      mockPrismaService.product.findUnique.mockResolvedValue(null);
+
+      await expect(service.findOne(999)).rejects.toThrow(NotFoundException);
+      expect(mockCacheService.setProduct).not.toHaveBeenCalled();
+    });
+
+    it('should validate the price range before consulting the cache', async () => {
+      await expect(
+        service.findAll({ ...query, minPrice: 100, maxPrice: 50 }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockCacheService.getList).not.toHaveBeenCalled();
     });
   });
 });

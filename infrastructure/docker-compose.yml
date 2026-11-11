@@ -128,6 +128,7 @@ services:
     environment:
       PORT: 3001
       DATABASE_URL: postgresql://ecommerce:ecommerce_dev@postgres:5432/product_catalog?schema=public
+      REDIS_URL: redis://redis:6379
 
       OTEL_SERVICE_NAME: product-catalog-service
       OTEL_TRACES_EXPORTER: otlp
@@ -141,6 +142,8 @@ services:
         --import=@opentelemetry/auto-instrumentations-node/register
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - ecommerce
@@ -282,6 +285,24 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ecommerce -d product_catalog"]
       interval: 5s
       timeout: 5s
+      retries: 10
+    networks:
+      - ecommerce
+
+  redis:
+    image: redis:7-alpine
+    container_name: e-commerce-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
       retries: 10
     networks:
       - ecommerce

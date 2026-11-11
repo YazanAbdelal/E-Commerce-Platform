@@ -11,13 +11,36 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import type { Redis } from 'ioredis';
 
 import { ProductCatalogServiceModule } from '../src/product-catalog-service.module.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { REDIS_CLIENT } from '../src/cache/redis.provider.js';
+
+// The client fails commands fast instead of queueing them, so tests have to
+// wait for the socket before touching the cache.
+async function waitForRedis(redis: Redis): Promise<void> {
+    if (redis.status === 'ready') {
+        return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(
+            () => reject(new Error('Redis did not become ready')),
+            5_000,
+        );
+
+        redis.once('ready', () => {
+            clearTimeout(timeout);
+            resolve();
+        });
+    });
+}
 
 describe('Products (E2E)', () => {
     let app: INestApplication;
     let prisma: PrismaService;
+    let redis: Redis;
 
     const createdProductIds: number[] = [];
 
@@ -27,6 +50,8 @@ describe('Products (E2E)', () => {
         }
 
         process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+        process.env.REDIS_URL =
+            process.env.REDIS_TEST_URL ?? 'redis://localhost:6379/15';
 
         const moduleFixture: TestingModule =
             await Test.createTestingModule({
@@ -45,8 +70,11 @@ describe('Products (E2E)', () => {
         );
 
         prisma = app.get<PrismaService>(PrismaService);
+        redis = app.get<Redis>(REDIS_CLIENT);
 
         await app.init();
+        await waitForRedis(redis);
+        await redis.flushdb();
     });
 
     afterEach(async () => {
@@ -179,5 +207,42 @@ describe('Products (E2E)', () => {
         await request(app.getHttpServer())
             .get('/products/not-a-number')
             .expect(400);
+    });
+
+    it('should serve cached reads and invalidate them on write', async () => {
+        const product = await createTestProduct();
+
+        await request(app.getHttpServer())
+            .get(`/products/${product.id}`)
+            .expect(200)
+            .expect((response) => {
+                expect(response.body.name).toBe(product.name);
+            });
+
+        // Change the row behind the cache: the next read should still be the
+        // cached copy, which proves the request never reached Postgres.
+        await prisma.product.update({
+            where: { id: product.id },
+            data: { name: 'Changed Behind The Cache' },
+        });
+
+        await request(app.getHttpServer())
+            .get(`/products/${product.id}`)
+            .expect(200)
+            .expect((response) => {
+                expect(response.body.name).toBe(product.name);
+            });
+
+        await request(app.getHttpServer())
+            .patch(`/products/${product.id}`)
+            .send({ name: 'Fresh Name' })
+            .expect(200);
+
+        await request(app.getHttpServer())
+            .get(`/products/${product.id}`)
+            .expect(200)
+            .expect((response) => {
+                expect(response.body.name).toBe('Fresh Name');
+            });
     });
 });

@@ -14,12 +14,14 @@ client -> nginx (Docker only) -> api-gateway :3000
      |               |               |              |               |
 product-catalog   user-service   shopping-cart   order          payment
     :3001            :3002          :3003         :3004           :3005
+      |
+   Redis (read cache)
 ```
 
 | Service | Port | Database | Responsibility |
 |---|---|---|---|
 | `api-gateway` | 3000 | – | Single public API surface: auth, validation, routing to services |
-| `product-catalog-service` | 3001 | `product_catalog` | Products, search, filtering, inventory |
+| `product-catalog-service` | 3001 | `product_catalog` | Products, search, filtering, inventory; Redis-backed read cache |
 | `user-service` | 3002 | `user_service` | Registration, login, JWT issuing, users, roles |
 | `shopping-cart-service` | 3003 | `shopping_cart` | Cart and cart items, product availability checks |
 | `order-service` | 3004 | `order_service` | Order creation from carts, order lifecycle |
@@ -35,6 +37,7 @@ propagate a request ID (`x-request-id`) for tracing across services.
 - **NestJS 12** on **Node.js 24**, TypeScript 6, ESM
 - **Prisma 7** with the `pg` driver adapter, one schema per service
 - **PostgreSQL 17**
+- **Redis 7** as a write-invalidated read cache in the product catalog
 - **Rspack** (via Nest CLI) for builds
 - **JWT** (`@nestjs/jwt`) + **bcrypt** for auth, `class-validator` for DTO validation
 - **Pino** structured logging (`nestjs-pino`)
@@ -50,6 +53,7 @@ propagate a request ID (`x-request-id`) for tracing across services.
 - npm (the repo uses `package-lock.json`; use `npm ci` for clean installs)
 - Docker and Docker Compose, for the containerized stack
 - PostgreSQL 17, if you run services directly on the host
+- Redis 7, if you run the product catalog directly on the host
 
 ## Quick Start
 
@@ -58,7 +62,8 @@ propagate a request ID (`x-request-id`) for tracing across services.
 ```bash
 # 1. Create a root .env with the variables listed below
 #    (at minimum JWT_SECRET, the five *_DATABASE_URL values, and the
-#    *_TEST_DATABASE_URL values if you plan to run the integration/E2E suites)
+#    *_TEST_DATABASE_URL values if you plan to run the integration/E2E suites;
+#    REDIS_URL defaults to localhost and is wired to the cache container)
 
 # 2. Build and start the stack
 cd infrastructure
@@ -162,6 +167,7 @@ individual services.
 | `npm run test:cov:unit` | Coverage for the unit suite only |
 | `npm run test:integration` | Integration tests (`*.integration.spec.ts`) |
 | `npm run test:e2e` | E2E tests (`*.e2e.spec.ts`) |
+| `npm run test:load` | k6 load test through nginx (needs the stack running) |
 | `npm run db:migrate` | Apply Prisma migrations to the development databases |
 | `npm run db:migrate:test` | Apply Prisma migrations to the test databases |
 | `npm run db:test:create` | Create any missing `*_TEST_DATABASE_URL` databases |
@@ -190,7 +196,10 @@ needs.
 | `CART_DATABASE_URL` | shopping-cart | Cart database URL |
 | `ORDER_DATABASE_URL` | order-service | Order database URL |
 | `PAYMENT_DATABASE_URL` | payment-service | Payment database URL |
+| `REDIS_URL` | product-catalog | Cache URL, defaults to `redis://localhost:6379` |
+| `PRODUCT_CACHE_TTL_SECONDS` / `PRODUCT_LIST_CACHE_TTL_SECONDS` | product-catalog | Cache TTLs, default 60s for a product and 30s for a list |
 | `*_TEST_DATABASE_URL` | tests | Test databases used by `db:test:create`, `db:migrate:test`, and CI |
+| `REDIS_TEST_URL` | tests | Redis database index used by integration/E2E (default index 15) |
 | `PORT` | all | Overrides the default port |
 | `PRODUCT_CATALOG_URL` | gateway, cart, order | Defaults to `http://localhost:3001` |
 | `USER_SERVICE_URL` | gateway | Defaults to `http://localhost:3002` |
@@ -206,6 +215,7 @@ USER_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/user_serv
 CART_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/shopping_cart?schema=public"
 ORDER_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/order_service?schema=public"
 PAYMENT_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/payment_service?schema=public"
+REDIS_URL="redis://localhost:6379"
 JWT_SECRET="<a-long-random-string>"
 
 # Only needed for `npm run db:test:create`, `db:migrate:test` and the test suites
@@ -214,6 +224,7 @@ USER_TEST_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/user
 CART_TEST_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/shopping_cart_test?schema=public"
 ORDER_TEST_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/order_service_test?schema=public"
 PAYMENT_TEST_DATABASE_URL="postgresql://ecommerce:ecommerce_dev@localhost:5432/payment_service_test?schema=public"
+REDIS_TEST_URL="redis://localhost:6379/15"
 ```
 
 ## Project Structure
@@ -308,6 +319,22 @@ Payment status moves through `PENDING → COMPLETED → REFUNDED`, with `FAILED`
 for declined payments. Payment creation verifies that the order belongs to the
 requesting user before anything is charged.
 
+## Caching
+
+The product catalog is the only read-heavy service, so it is the only one with
+a cache. `GET /products` and `GET /products/:id` are cache-aside: a miss reads
+Postgres and populates Redis.
+
+- A product is stored under `catalog:product:{id}` for 60 seconds.
+- A list is stored for 30 seconds under a key that embeds a version counter,
+  `catalog:products:{version}:{query fingerprint}`.
+- Any write deletes the affected detail key and increments the version, which
+  retires every cached list at once without scanning for keys. TTLs are only a
+  safety net for entries nobody invalidates.
+- Redis is optional at runtime: the client fails fast instead of queueing
+  commands, and every cache error is logged and counted while the request falls
+  through to Postgres. A cache outage costs latency, not availability.
+
 ## Testing
 
 ```bash
@@ -325,7 +352,9 @@ Prisma clients and spec files. Pass suite names to run a subset:
 `node scripts/coverage.mjs unit e2e`.
 
 Integration and E2E suites expect the test databases from `.env` to exist and
-to be migrated. Prepare them once:
+to be migrated, plus a Redis instance the catalog cache can use
+(`REDIS_TEST_URL`, database index 15). With the compose stack running, Redis is
+already reachable on `localhost:6379`. Prepare the databases once:
 
 ```bash
 npm run db:test:create   # create the *_test databases that don't exist yet
@@ -335,10 +364,65 @@ npm run db:migrate:test  # apply each service's migrations to its test database
 E2E files run sequentially because they share and truncate those databases.
 `npm run test:e2e` also needs `JWT_SECRET` set.
 
+### Load testing
+
+```bash
+npm run test:load            # mixed workload, 50 concurrent users, ~90s
+npm run test:load -- --smoke # a few seconds, validates the script
+```
+
+k6 runs in a container attached to the compose network, so every request goes
+through nginx, the gateway and the downstream service exactly as real traffic
+does. The scenario mixes 40 VUs browsing the catalog (list + detail) with 10
+VUs running the full checkout (register → login → cart → order → payment →
+capture), ramps to 50 concurrent users and holds for a minute. The run fails if
+more than 1% of requests error, or if p95 exceeds 1s for browsing or 3s for
+checkout.
+
+`--vus` and `--duration` override the scenarios and run a catalog-only stress
+test, which is the quickest way to find the read path's ceiling:
+
+```bash
+npm run test:load -- --vus 50 --duration 60s -e THINK_TIME=0
+```
+
+`THINK_TIME` sets the maximum pause between requests inside a virtual user, so
+`0` turns the run into a closed-loop saturation test instead of a simulated
+session.
+
+Measured on a dev laptop (Docker Desktop, six services, Postgres and Redis),
+same script, same 60s run, with the cache switched off by stopping the Redis
+container:
+
+| Catalog-only, 50 VUs | Throughput | p95 | Errors |
+|---|---|---|---|
+| Cache off | 255.8 req/s | 255 ms | 0% |
+| Cache on | 311.7 req/s | 201 ms | 0% |
+
+That is +22% throughput and 21% lower p95 on the read path, with a 99.75% hit
+ratio (18,704 hits, 46 misses). Stopping Redis mid-run costs throughput but not
+availability: every request still succeeded. The gain is bounded by how cheap
+the underlying query already is — three-column rows in a small table — so the
+cache removes a round trip rather than a slow scan.
+
+The mixed workload (40 browsing + 10 checkout VUs, one-second think time) is
+dominated by the checkout chain, which writes and therefore never reads the
+cache: 155.6 req/s with the cache and 151.1 req/s without, both at 0% errors,
+with average latency dropping from 39ms to 31ms.
+
+These are laptop numbers from a closed-loop test, not a saturation benchmark of
+the stack; use them for relative comparison, not as a capacity claim.
+
+The checkout workload writes users, carts, orders and payments, so point it at
+the compose stack rather than at data you care about.
+
 ## Observability
 
 - Every service exposes Prometheus metrics at `/metrics`; Prometheus scrapes
   all six in `infrastructure/prometheus/prometheus.yml`.
+- The product catalog also exports `cache_hits_total`, `cache_misses_total` and
+  `cache_errors_total`, so a collapsing hit ratio or a Redis outage is visible
+  in Grafana rather than only in latency.
 - Traces are exported over OTLP/HTTP to Tempo (`http://tempo:4318/v1/traces`)
   when the containers pass the `OTEL_*` and `NODE_OPTIONS` settings configured
   in `infrastructure/docker-compose.yml`.
