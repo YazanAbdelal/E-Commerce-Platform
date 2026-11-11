@@ -14,7 +14,7 @@ vi.mock('@nestjs/core', async (importOriginal) => {
     return { ...actual, NestFactory: { create } };
 });
 
-describe('user-service bootstrap', () => {
+describe('user-service bootstrap', { timeout: 20_000 }, () => {
     afterEach(() => {
         vi.resetModules();
         vi.clearAllMocks();

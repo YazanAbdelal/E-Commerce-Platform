@@ -158,7 +158,8 @@ individual services.
 | `npm run lint` | Lint with oxlint (type-aware) |
 | `npm test` | Unit tests (Vitest) |
 | `npm run test:watch` | Unit tests in watch mode |
-| `npm run test:cov` | Unit tests with coverage |
+| `npm run test:cov` | Coverage across unit, integration and E2E, merged into one project-wide figure |
+| `npm run test:cov:unit` | Coverage for the unit suite only |
 | `npm run test:integration` | Integration tests (`*.integration.spec.ts`) |
 | `npm run test:e2e` | E2E tests (`*.e2e.spec.ts`) |
 | `npm run db:migrate` | Apply Prisma migrations to the development databases |
@@ -311,10 +312,17 @@ requesting user before anything is charged.
 
 ```bash
 npm test                 # unit tests
-npm run test:cov         # unit tests with a coverage report
+npm run test:cov         # unit + integration + E2E coverage, merged
+npm run test:cov:unit    # unit tests with coverage only
 npm run test:integration # integration tests (need the test databases)
 npm run test:e2e         # E2E tests (boots real services against test DBs)
 ```
+
+`npm run test:cov` runs all three suites and merges their reports, so files no
+suite touches count as uncovered; it therefore needs the test databases too.
+Coverage is scoped to `apps/**/src` and `libs/**/src`, excluding generated
+Prisma clients and spec files. Pass suite names to run a subset:
+`node scripts/coverage.mjs unit e2e`.
 
 Integration and E2E suites expect the test databases from `.env` to exist and
 to be migrated. Prepare them once:
